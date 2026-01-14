@@ -1,0 +1,88 @@
+# Augment-BYOK config (v1)
+# - Key 仅来自 env，不写入此文件
+# - 修改此文件应触发热更新（对后续请求生效）
+
+version: 1
+enabled: true
+
+providers:
+  - id: openai
+    type: openai_compatible
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    default_model: gpt-4o-mini
+    # headers: { "OpenAI-Organization": "xxx" }
+    # request_defaults: { "temperature": 0.2 }
+
+  - id: anthropic
+    type: anthropic
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    default_model: claude-3-5-sonnet-20241022
+    # headers: { "anthropic-beta": "prompt-caching-2024-07-31" }
+    # request_defaults: { "max_tokens": 8192 }
+
+routing:
+  # endpoint 级别最小路由：byok | official | disabled
+  # 未配置则默认 official（更稳：未知端点不被 BYOK 接管）
+  default_mode: official
+
+  # 仅作为最小可解释路由规则：key=endpoint（不带 host；支持 /chat-stream 这类）
+  rules:
+    /get-models:
+      mode: byok
+    /prompt-enhancer:
+      mode: byok
+    /chat:
+      mode: byok
+    /chat-stream:
+      mode: byok
+    /completion:
+      mode: byok
+    /edit:
+      mode: byok
+    /chat-input-completion:
+      mode: byok
+    /instruction-stream:
+      mode: byok
+    /next-edit-stream:
+      mode: byok
+    /smart-paste-stream:
+      mode: byok
+    /generate-commit-message-stream:
+      mode: byok
+    /generate-conversation-title:
+      mode: byok
+    /next_edit_loc:
+      mode: byok
+
+  # 可选：把官方模型名映射到 BYOK 模型
+  model_map:
+    # "gpt-4o": "byok:openai:gpt-4o"
+    # "claude": "byok:anthropic:claude-3-5-sonnet-20241022"
+
+timeouts:
+  upstream_ms: 120000
+
+telemetry:
+  # 顺手禁用部分遥测/上报：本地 no-op（不发网络请求；避免破坏核心能力）
+  disabled_endpoints:
+    - /client-metrics
+    - /client-completion-timelines
+    - /record-preference-sample
+    - /record-request-events
+    - /record-session-events
+    - /record-user-events
+    - /report-error
+    - /report-feature-vector
+    - /resolve-completions
+    - /resolve-chat-input-completion
+    - /resolve-edit
+    - /resolve-instruction
+    - /resolve-next-edit
+    - /resolve-smart-paste
+  # 可选（更激进）：禁用反馈端点（不影响主要功能，但会少掉反馈上报）
+  # disabled_endpoints:
+  #   - /chat-feedback
+  #   - /completion-feedback
+  #   - /next-edit-feedback

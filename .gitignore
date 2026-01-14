@@ -1,0 +1,5 @@
+.cache/
+dist/
+tmp/
+
+config.yaml

@@ -1,0 +1,12 @@
+{
+  "name": "augment-byok",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Build single VSIX by patching upstream augment.vscode-augment (in-process BYOK shim)",
+  "type": "commonjs",
+  "scripts": {
+    "build:vsix": "node tools/build/build-vsix.js",
+    "upstream:analyze": "node tools/build/upstream-analyze.js"
+  }
+}
+
