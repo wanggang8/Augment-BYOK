@@ -223,6 +223,7 @@ function main() {
   const extJs = readText(extJsPath);
   assertContains(extJs, "__augment_byok_augment_interceptor_injected_v1", "augment interceptor injected");
   assertContains(extJs, "__augment_byok_bootstrap_injected_v1", "bootstrap injected");
+  assertContains(extJs, "__augment_byok_expose_upstream_v1", "expose upstream (toolsModel) injected");
   assertContains(extJs, "__augment_byok_official_overrides_patched_v1", "official overrides patched");
   assertContains(extJs, "__augment_byok_callapi_shim_patched_v1", "callApi shim patched");
   assert(!extJs.includes("case \"/autoAuth\"") && !extJs.includes("handleAutoAuth"), "autoAuth guard failed (post-check)");

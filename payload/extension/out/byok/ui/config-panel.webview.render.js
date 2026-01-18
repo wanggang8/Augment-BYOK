@@ -290,7 +290,7 @@
           </div>
           ${stRunning ? `<span class="badge">running</span>` : stReport ? (stReport.ok === true ? `<span class="badge">ok</span>` : `<span class="badge">failed</span>`) : ""}
         </div>
-        <div class="hint">覆盖：models / 非流式 / 流式 / chat-stream / 真实工具集(schema+tool_use 往返) / 官方工具真实执行(agents/run-remote-tool) / 多模态 / 上下文压缩(historySummary) / 缓存命中。</div>
+        <div class="hint">覆盖：models / 非流式 / 流式 / chat-stream / 真实工具集(schema+tool_use 往返) / 真实工具执行(toolsModel.callTool 全覆盖) / 多模态 / 上下文压缩(historySummary) / 缓存命中。</div>
         ${summarizeSelfTestReport()}
         <textarea class="mono" id="selfTestLog" readonly style="min-height:160px;">${escapeHtml(stLogs.join("\n"))}</textarea>
       </div>

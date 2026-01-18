@@ -13,6 +13,7 @@ const { patchAugmentInterceptorInject } = require("../patch/patch-augment-interc
 const { patchExtensionEntry } = require("../patch/patch-extension-entry");
 const { patchOfficialOverrides } = require("../patch/patch-official-overrides");
 const { patchCallApiShim } = require("../patch/patch-callapi-shim");
+const { patchExposeUpstream } = require("../patch/patch-expose-upstream");
 const { patchPackageJsonCommands } = require("../patch/patch-package-json-commands");
 const { guardNoAutoAuth } = require("../patch/guard-no-autoauth");
 
@@ -68,6 +69,9 @@ async function main() {
 
   console.log(`[build] patch entry bootstrap`);
   patchExtensionEntry(extJsPath);
+
+  console.log(`[build] expose upstream internals (toolsModel)`);
+  patchExposeUpstream(extJsPath);
 
   console.log(`[build] patch official (completionURL/apiToken from globalState config)`);
   patchOfficialOverrides(extJsPath);
