@@ -405,6 +405,7 @@
                           ${optionHtml({ value: "openai_compatible", label: "openai_compatible", selected: type === "openai_compatible" })}
                           ${optionHtml({ value: "openai_responses", label: "openai_responses", selected: type === "openai_responses" })}
                           ${optionHtml({ value: "anthropic", label: "anthropic", selected: type === "anthropic" })}
+                          ${optionHtml({ value: "anthropic_claude_code", label: "anthropic_claude_code", selected: type === "anthropic_claude_code" })}
                           ${optionHtml({ value: "gemini_ai_studio", label: "gemini_ai_studio", selected: type === "gemini_ai_studio" })}
                         </select>
                       </td>

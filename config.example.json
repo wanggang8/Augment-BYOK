@@ -36,6 +36,16 @@
       "requestDefaults": { "max_tokens": 8192 }
     },
     {
+      "id": "anthropic-cli",
+      "type": "anthropic_claude_code",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKey": "sk-ant-your-anthropic-api-key",
+      "models": ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"],
+      "defaultModel": "claude-sonnet-4-5-20250929",
+      "headers": {},
+      "requestDefaults": { "max_tokens": 8192 }
+    },
+    {
       "id": "gemini",
       "type": "gemini_ai_studio",
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta",

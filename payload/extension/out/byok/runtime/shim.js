@@ -16,6 +16,7 @@ const { ensureModelRegistryFeatureFlags } = require("../core/model-registry");
 const { openAiCompleteText, openAiStreamTextDeltas, openAiChatStreamChunks } = require("../providers/openai");
 const { openAiResponsesCompleteText, openAiResponsesStreamTextDeltas, openAiResponsesChatStreamChunks } = require("../providers/openai-responses");
 const { anthropicCompleteText, anthropicStreamTextDeltas, anthropicChatStreamChunks } = require("../providers/anthropic");
+const { anthropicClaudeCodeCompleteText, anthropicClaudeCodeStreamTextDeltas, anthropicClaudeCodeChatStreamChunks } = require("../providers/anthropic-claude-code");
 const { geminiCompleteText, geminiStreamTextDeltas, geminiChatStreamChunks } = require("../providers/gemini");
 const { joinBaseUrl, safeFetch, readTextLimit } = require("../providers/http");
 const { getOfficialConnection } = require("../config/official");
@@ -340,6 +341,10 @@ async function byokCompleteText({ provider, model, system, messages, timeoutMs, 
     const { system: sys, messages: msgs } = asAnthropicMessages(system, messages);
     return await anthropicCompleteText({ baseUrl, apiKey, model, system: sys, messages: msgs, timeoutMs, abortSignal, extraHeaders, requestDefaults });
   }
+  if (type === "anthropic_claude_code") {
+    const { system: sys, messages: msgs } = asAnthropicMessages(system, messages);
+    return await anthropicClaudeCodeCompleteText({ baseUrl, apiKey, model, system: sys, messages: msgs, timeoutMs, abortSignal, extraHeaders, requestDefaults });
+  }
   if (type === "openai_responses") {
     const { instructions, input } = asOpenAiResponsesInput(system, messages);
     return await openAiResponsesCompleteText({ baseUrl, apiKey, model, instructions, input, timeoutMs, abortSignal, extraHeaders, requestDefaults });
@@ -370,6 +375,11 @@ async function* byokStreamText({ provider, model, system, messages, timeoutMs, a
   if (type === "anthropic") {
     const { system: sys, messages: msgs } = asAnthropicMessages(system, messages);
     yield* anthropicStreamTextDeltas({ baseUrl, apiKey, model, system: sys, messages: msgs, timeoutMs, abortSignal, extraHeaders, requestDefaults });
+    return;
+  }
+  if (type === "anthropic_claude_code") {
+    const { system: sys, messages: msgs } = asAnthropicMessages(system, messages);
+    yield* anthropicClaudeCodeStreamTextDeltas({ baseUrl, apiKey, model, system: sys, messages: msgs, timeoutMs, abortSignal, extraHeaders, requestDefaults });
     return;
   }
   if (type === "openai_responses") {
@@ -422,6 +432,10 @@ async function* byokChatStream({ cfg, provider, model, requestedModel, body, tim
   }
   if (type === "anthropic") {
     yield* anthropicChatStreamChunks({ baseUrl, apiKey, model, system: buildSystemPrompt(req), messages: buildAnthropicMessages(req), tools: convertAnthropicTools(req.tool_definitions), timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart });
+    return;
+  }
+  if (type === "anthropic_claude_code") {
+    yield* anthropicClaudeCodeChatStreamChunks({ baseUrl, apiKey, model, system: buildSystemPrompt(req), messages: buildAnthropicMessages(req), tools: convertAnthropicTools(req.tool_definitions), timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart });
     return;
   }
   if (type === "openai_responses") {
@@ -1085,6 +1099,10 @@ async function maybeHandleCallApi({ endpoint, body, transform, timeoutMs, abortS
     }
     if (type === "anthropic") {
       const text = await anthropicCompleteText({ baseUrl, apiKey, model: route.model, system: buildSystemPrompt(req), messages: buildAnthropicMessages(req), timeoutMs: t, abortSignal, extraHeaders, requestDefaults });
+      return safeTransform(transform, makeBackChatResult(text, { nodes: [] }), ep);
+    }
+    if (type === "anthropic_claude_code") {
+      const text = await anthropicClaudeCodeCompleteText({ baseUrl, apiKey, model: route.model, system: buildSystemPrompt(req), messages: buildAnthropicMessages(req), timeoutMs: t, abortSignal, extraHeaders, requestDefaults });
       return safeTransform(transform, makeBackChatResult(text, { nodes: [] }), ep);
     }
     if (type === "openai_responses") {

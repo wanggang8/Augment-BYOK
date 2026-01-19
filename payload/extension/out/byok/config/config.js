@@ -76,6 +76,16 @@ function defaultConfig() {
         defaultModel: "claude-3-5-sonnet-20241022",
         headers: {},
         requestDefaults: {}
+      },
+      {
+        id: "anthropic-cli",
+        type: "anthropic_claude_code",
+        baseUrl: "https://api.anthropic.com/v1",
+        apiKey: "",
+        models: ["claude-sonnet-4-5-20250929"],
+        defaultModel: "claude-sonnet-4-5-20250929",
+        headers: {},
+        requestDefaults: {}
       }
     ],
     routing: {

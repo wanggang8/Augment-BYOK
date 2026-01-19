@@ -1,5 +1,5 @@
 .cache/
 dist/
 tmp/
-
+node_modules/
 config.yaml
