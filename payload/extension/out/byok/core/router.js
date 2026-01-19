@@ -34,7 +34,7 @@ function decideRoute({ cfg, endpoint, body, runtimeEnabled }) {
   if (mode === "disabled") return { mode, endpoint: ep, reason: "rule" };
   if (mode === "official" && !parsed) return { mode, endpoint: ep, reason: "rule" };
   if (mode !== "byok" && !parsed) return { mode: "official", endpoint: ep, reason: "unknown_mode" };
-  const providerId = normalizeString(rule?.providerId) || parsed?.providerId || normalizeString(cfg?.routing?.defaultProviderId) || "";
+  const providerId = normalizeString(rule?.providerId) || parsed?.providerId || "";
   const provider = pickProvider(cfg, providerId);
   const parsedModel = parsed && normalizeString(parsed.providerId) === normalizeString(provider?.id) ? parsed.modelId : "";
   const model = normalizeString(rule?.model) || normalizeString(parsedModel) || normalizeString(provider?.defaultModel) || "";

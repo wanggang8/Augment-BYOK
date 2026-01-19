@@ -9,11 +9,17 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: upstream-check
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -28,11 +34,11 @@ jobs:
         run: |
           node -e 'const fs=require("fs");const p="upstream.lock.json";if(!fs.existsSync(p)){console.log("version=");process.exit(0)};const j=JSON.parse(fs.readFileSync(p,"utf8"));console.log("version="+(j?.upstream?.version||""))' >> "$GITHUB_OUTPUT"
 
-      - name: Build VSIX (updates upstream.lock.json)
-        run: node tools/build/build-vsix.js
-
       - name: Upstream analyze
         run: node tools/build/upstream-analyze.js
+
+      - name: Build VSIX (updates upstream.lock.json)
+        run: node tools/build/build-vsix.js
 
       - name: Endpoint coverage (LLM fail-fast)
         run: node tools/report/endpoint-coverage.js --analysis .cache/reports/upstream-analysis.json --out dist/endpoint-coverage.report.md --fail-fast

@@ -240,7 +240,7 @@
     return lines.join("");
   };
 
-  ns.renderApp = function renderApp({ cfg, summary, status, modal, dirty, sideCollapsed, endpointSearch, selfTest }) {
+  ns.renderApp = function renderApp({ cfg, summary, status, modal, dirty, sideCollapsed, endpointSearch, selfTest, officialTest, providerExpanded }) {
     const c = cfg && typeof cfg === "object" ? cfg : {};
     const s = summary && typeof summary === "object" ? summary : {};
     const off = c.official && typeof c.official === "object" ? c.official : {};
@@ -265,6 +265,22 @@
     const stLogs = Array.isArray(st.logs) ? st.logs : [];
     const stReport = st.report && typeof st.report === "object" ? st.report : null;
 
+	    const ot = officialTest && typeof officialTest === "object" ? officialTest : {};
+	    const otRunning = ot.running === true;
+	    const otOk = ot.ok === true ? true : ot.ok === false ? false : null;
+	    const otText = normalizeStr(ot.text);
+	    const otTextShort = otText.length > 140 ? otText.slice(0, 140) + "…" : otText;
+	    const otBadge = otRunning
+	      ? `<span class="status-badge status-badge--warning">testing</span>`
+	      : otOk === true
+	        ? `<span class="status-badge status-badge--success">ok</span>`
+	        : otOk === false
+	          ? `<span class="status-badge status-badge--error">failed</span>`
+	          : "";
+	    const otTextHtml = otTextShort
+	      ? `<span class="text-muted text-mono text-xs inline-ellipsis"${otText !== otTextShort ? ` title="${escapeHtml(otText)}"` : ""}>${escapeHtml(otTextShort)}</span>`
+	      : "";
+
     const summarizeSelfTestReport = () => {
       if (!stReport) return "";
       const ps = Array.isArray(stReport.providers) ? stReport.providers : [];
@@ -288,218 +304,336 @@
       );
     };
 
-    const selfTestHtml = `
-      <div class="card">
-        <div class="title">Self Test</div>
-        <div class="row" style="justify-content:space-between;align-items:center;">
-          <div class="row">
-            <button class="btn primary" data-action="runSelfTest" ${stRunning ? "disabled" : ""}>Run</button>
-            <button class="btn" data-action="cancelSelfTest" ${stRunning ? "" : "disabled"}>Cancel</button>
-            <button class="btn" data-action="clearSelfTest" ${stRunning ? "disabled" : ""}>Clear</button>
-          </div>
-          ${stRunning ? `<span class="badge">running</span>` : stReport ? (stReport.ok === true ? `<span class="badge">ok</span>` : `<span class="badge">failed</span>`) : ""}
-        </div>
-        <div class="hint">覆盖：models / 非流式 / 流式 / chat-stream / 真实工具集(schema+tool_use 往返) / 真实工具执行(toolsModel.callTool 全覆盖) / 多模态 / 上下文压缩(historySummary) / 缓存命中。</div>
-        ${summarizeSelfTestReport()}
-        <textarea class="mono" id="selfTestLog" readonly style="min-height:160px;">${escapeHtml(stLogs.join("\n"))}</textarea>
-      </div>
-    `;
+	    const selfTestHtml = `
+	      <section class="settings-panel">
+	        <header class="settings-panel__header">
+	          <div class="flex-row flex-wrap">
+	            <span>Self Test</span>
+	            ${stRunning ? `<span class="status-badge status-badge--warning">running</span>` : stReport ? (stReport.ok === true ? `<span class="status-badge status-badge--success">ok</span>` : `<span class="status-badge status-badge--error">failed</span>`) : ""}
+	          </div>
+	          <div class="flex-row flex-wrap">
+	            <button class="btn btn--small btn--primary" data-action="runSelfTest" ${stRunning ? "disabled" : ""}>Run</button>
+	            <button class="btn btn--small" data-action="cancelSelfTest" ${stRunning ? "" : "disabled"}>Cancel</button>
+	            <button class="btn btn--small" data-action="clearSelfTest" ${stRunning ? "disabled" : ""}>Clear</button>
+	          </div>
+	        </header>
+	        <div class="settings-panel__body">
+	          <div class="text-muted text-xs">覆盖：models / 非流式 / 流式 / chat-stream / 真实工具集(schema+tool_use 往返) / 真实工具执行(toolsModel.callTool 全覆盖) / 多模态 / 上下文压缩(historySummary) / 缓存命中。</div>
+	          ${summarizeSelfTestReport()}
+	          <textarea class="mono" id="selfTestLog" readonly style="min-height:160px;">${escapeHtml(stLogs.join("\n"))}</textarea>
+	        </div>
+	      </section>
+	    `;
 
-    const toolbar = [
-      `<button class="btn primary" data-action="save">Save</button>`,
-      `<button class="btn" data-action="reset">Reset</button>`,
-      `<button class="btn" data-action="reload">Reload</button>`,
-      runtimeEnabled
-        ? `<button class="btn danger" data-action="toggleRuntime">Rollback (Disable Runtime)</button>`
-        : `<button class="btn" data-action="toggleRuntime">Enable Runtime</button>`,
-      `<button class="btn" data-action="toggleSide">${isSideCollapsed ? "Show Summary" : "Hide Summary"}</button>`,
-      isDirty ? `<span class="badge" id="dirtyBadge">pending</span>` : `<span class="badge" id="dirtyBadge">saved</span>`
-    ].join("");
+	    const headerBadges = [
+	      `<span class="status-badge">schema v1</span>`,
+	      runtimeEnabled ? `<span class="status-badge status-badge--success">BYOK: ON</span>` : `<span class="status-badge status-badge--warning">BYOK: OFF</span>`,
+	      `<span class="status-badge${isDirty ? " status-badge--warning" : " status-badge--success"}" id="dirtyBadge">${isDirty ? "pending" : "saved"}</span>`
+	    ].join("");
 
-    const saveHint = `
-      <div class="hint">
-        提示：面板里的修改只会暂存在 UI 中，点击 <span class="mono">Save</span> 才会写入 extension <span class="mono">globalState</span>。
-        <span class="mono">Reload</span> 会丢弃未保存修改并重新加载最后一次保存的配置；<span class="mono">Reset</span> 会直接写入默认配置。
-      </div>
-    `;
+	    const appHeader = `
+	      <header class="app-header">
+	        <div class="app-title">
+	          <h1>
+	            Augment BYOK
+	            ${headerBadges}
+	          </h1>
+	          <div class="text-muted text-xs" id="status">${escapeHtml(status || "Ready.")}</div>
+	          <div class="text-muted text-xs">提示：保存后生效；刷新会丢弃未保存修改。</div>
+	        </div>
+	        <div class="header-actions flex-row flex-wrap">
+	          <label class="checkbox-wrapper" title="开启或关闭 BYOK 运行时（关闭=回滚到官方）">
+	            <input type="checkbox" id="runtimeEnabledToggle" ${runtimeEnabled ? "checked" : ""} />
+	            <span>启用 BYOK</span>
+	          </label>
+	          <button class="btn btn--small" data-action="reload" title="重新加载配置（丢弃未保存修改）">刷新</button>
+	          <button class="btn btn--small btn--primary" data-action="save" title="保存配置到 extension storage">保存</button>
+	          <button class="btn btn--small" data-action="reset" title="重置为默认配置（会清空已存储的 token/key）">重置</button>
+	          <button class="btn btn--small" data-action="reloadWindow" title="重载 VS Code 窗口（会重载插件与主面板）">重载</button>
+	        </div>
+	      </header>
+	    `;
 
-    const general = `
-      <div class="card">
-        <div class="title">General</div>
-        <div class="hint">
-          常用：设置默认 BYOK provider（用于未显式指定 provider 的 byok 路由，以及 <span class="mono">/get-models</span> 注入的默认模型偏好）。总开关请用顶部按钮。
-        </div>
-        <div class="grid">
-          <div>routing.default_provider_id</div>
-          <div>
-            <select id="defaultProviderId">
-              ${optionHtml({ value: "", label: "(auto)", selected: !routing.defaultProviderId })}
-              ${providerIds.map((id) => optionHtml({ value: id, label: id, selected: routing.defaultProviderId === id })).join("")}
-            </select>
-            <div class="small">留空：自动选择（通常为 providers[0]）。</div>
-          </div>
-        </div>
-      </div>
-    `;
+	    const completionUrl = normalizeStr(off.completionUrl ?? "");
+		    const completionUrlValid = !completionUrl || /^https?:\/\//i.test(completionUrl);
+	    const completionUrlBadge = completionUrlValid
+	      ? `<span class="status-badge status-badge--success">url: ok</span>`
+	      : `<span class="status-badge status-badge--error">url: invalid</span>`;
+	    const tokenSet = Boolean(normalizeStr(off.apiToken));
+	    const tokenBadge = tokenSet ? `<span class="status-badge status-badge--success">token: set</span>` : `<span class="status-badge status-badge--warning">token: empty</span>`;
 
-    const official = `
-      <div class="card">
-        <div class="title">Official</div>
-        <div class="hint">
-          用于 non-LLM 端点 official 路由 + /get-models 合并。
-          若你已通过 Augment 登录（OAuth），通常可以留空 <span class="mono">api_token</span>（走登录态）；
-          若填入 <span class="mono">api_token</span>（API Token 模式），<span class="mono">completion_url</span> 需要是 tenant URL（形如 <span class="mono">https://&lt;tenant&gt;.augmentcode.com/</span>），否则 Preferences → Secrets Manager 可能报 <span class="mono">Not Found</span>。
-        </div>
-        <div class="grid">
-          <div>completion_url</div>
-          <div><input type="text" id="officialCompletionUrl" value="${escapeHtml(off.completionUrl ?? "")}" placeholder="https://&lt;tenant&gt;.augmentcode.com/" /></div>
-          <div>api_token</div>
-          <div class="row">
-            <input type="password" id="officialApiToken" value="" placeholder="${off.apiToken ? "(set)" : "(empty)"}" />
-            <button class="btn" data-action="clearOfficialToken">Clear</button>
-          </div>
-        </div>
-        <div class="small">说明：token 输入框留空=保持不变；Clear=清空。</div>
-      </div>
-    `;
+	    const official = `
+	      <section class="settings-panel">
+	        <header class="settings-panel__header">
+	          <div class="flex-row flex-wrap">
+	            <span>Official</span>
+	            ${completionUrlBadge}
+	            ${tokenBadge}
+	          </div>
+	          <div class="flex-row" style="min-width:0;">
+	            <button class="btn btn--small" data-action="testOfficialGetModels" ${otRunning ? "disabled" : ""} title="/get-models">测试连接</button>
+	            ${otBadge}
+	            ${otTextHtml}
+	          </div>
+	        </header>
+	        <div class="settings-panel__body">
+	          <div class="form-grid">
+	            <div class="form-group">
+	              <label class="form-label" for="officialCompletionUrl">Completion URL</label>
+	              <input type="url" id="officialCompletionUrl" value="${escapeHtml(off.completionUrl ?? "")}" placeholder="https://&lt;tenant&gt;.augmentcode.com/" />
+	              <div class="text-muted text-xs">用于官方 upstream 路由 + <span class="text-mono">/get-models</span> 合并。</div>
+	            </div>
+	            <div class="form-group">
+	              <div class="flex-between flex-row">
+	                <label class="form-label" for="officialApiToken">API Token</label>
+	                ${tokenBadge}
+	              </div>
+	              <div class="flex-row">
+	                <input type="password" id="officialApiToken" value="" placeholder="${off.apiToken ? "(set)" : "(empty)"}" />
+	                <button class="btn btn--icon btn--danger" data-action="clearOfficialToken" title="清空 Token">✕</button>
+	              </div>
+	              <div class="text-muted text-xs">留空=不改；点击 ✕=清空（保存后生效）。</div>
+	            </div>
+	          </div>
+	        </div>
+	      </section>
+	    `;
 
-    const providersHtml = `
-      <div class="card">
-        <div class="title">Providers</div>
-        <div class="hint">OpenAI Chat Completions / OpenAI Responses（Codex）/ Anthropic / Google Gemini（AI Studio）。models 用于下拉选择与 /get-models 注入。</div>
-        <div class="row" style="margin-bottom:8px;justify-content:space-between;">
-          <button class="btn" data-action="addProvider">Add Provider</button>
-          <div class="small">Tips: Fetch Models 会把结果写入 UI（pending save）。</div>
-        </div>
-        <div style="overflow:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th style="min-width:120px;">id</th>
-                <th style="min-width:140px;">type</th>
-                <th style="min-width:260px;">base_url</th>
-                <th style="min-width:220px;">api_key</th>
-                <th style="min-width:180px;">models</th>
-                <th style="min-width:220px;">default_model</th>
-                <th style="min-width:170px;">advanced</th>
-                <th style="min-width:90px;"></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${providers
-                .map((p, idx) => {
-                  const pid = normalizeStr(p?.id);
-                  const type = normalizeStr(p?.type);
-                  const baseUrl = normalizeStr(p?.baseUrl);
-                  const apiKeySet = Boolean(normalizeStr(p?.apiKey));
-                  const dm = normalizeStr(p?.defaultModel);
-                  const rawModels = Array.isArray(p?.models) ? p.models : [];
-                  const models = uniq(rawModels.filter((m) => normalizeStr(m)));
-                  const modelOptions = uniq(models.concat(dm ? [dm] : []));
+		    const providersHtml = (() => {
+		      const expanded = providerExpanded && typeof providerExpanded === "object" && !Array.isArray(providerExpanded) ? providerExpanded : {};
+		      const list = providers
+		        .map((p, idx) => {
+		          const pid = normalizeStr(p?.id);
+		          const pKey = pid || `idx:${idx}`;
+		          const type = normalizeStr(p?.type);
+		          const baseUrl = normalizeStr(p?.baseUrl);
+		          const apiKeySet = Boolean(normalizeStr(p?.apiKey));
+		          const dm = normalizeStr(p?.defaultModel);
+		          const rawModels = Array.isArray(p?.models) ? p.models : [];
+	          const models = uniq(rawModels.filter((m) => normalizeStr(m)));
+	          const modelOptions = uniq(models.concat(dm ? [dm] : []));
+	          const requestDefaults = p?.requestDefaults && typeof p.requestDefaults === "object" && !Array.isArray(p.requestDefaults) ? p.requestDefaults : {};
+	          const thinkingUi = (() => {
+	            if (type === "openai_responses") {
+	              const uiThinkingLevel = normalizeStr(requestDefaults.__byok_thinking_level);
+	              const reasoning =
+	                requestDefaults.reasoning && typeof requestDefaults.reasoning === "object" && !Array.isArray(requestDefaults.reasoning) ? requestDefaults.reasoning : {};
+	              const raw = normalizeStr(reasoning.effort);
+	              const rawNorm = raw.replace(/[\s-]+/g, "_");
+	              const v =
+	                rawNorm === "extra_high"
+	                  ? "extra"
+	                  : rawNorm === "high" && uiThinkingLevel === "extra"
+	                  ? "extra"
+	                  : rawNorm === "low" || rawNorm === "medium" || rawNorm === "high"
+	                    ? rawNorm
+	                    : rawNorm
+	                      ? "custom"
+	                      : "";
+	              const hint =
+	                v === "extra"
+	                  ? "OpenAI Responses：reasoning.effort=extra_high（注意：Extra high 可能更快消耗速率/额度）"
+	                  : "OpenAI Responses：reasoning.effort=low|medium|high|extra_high";
+	              return { supported: true, value: v, hint };
+	            }
+	            if (type === "anthropic") {
+	              const thinking =
+	                requestDefaults.thinking && typeof requestDefaults.thinking === "object" && !Array.isArray(requestDefaults.thinking) ? requestDefaults.thinking : null;
+	              const tType = normalizeStr(thinking && thinking.type);
+	              const btRaw = thinking ? (thinking.budget_tokens ?? thinking.budgetTokens) : undefined;
+	              const bt = Number(btRaw);
+	              let v = "";
+	              if (thinking) {
+	                if (tType !== "enabled") v = "custom";
+	                else if (bt === 1024) v = "low";
+	                else if (bt === 2048) v = "medium";
+	                else if (bt === 4096) v = "high";
+	                else if (bt === 8192) v = "extra";
+	                else v = "custom";
+	              }
+	              return { supported: true, value: v, hint: "Anthropic：写入 requestDefaults.thinking.budget_tokens（Low/Medium/High/Extra high）" };
+	            }
+	            return { supported: false, value: "", hint: "该类型不支持（可用 Defaults JSON 自定义）" };
+	          })();
 
-                  return `
-                    <tr>
-                      <td><input type="text" data-p-idx="${idx}" data-p-key="id" value="${escapeHtml(pid)}" placeholder="openai" /></td>
-                      <td>
-                        <select data-p-idx="${idx}" data-p-key="type">
-                          ${optionHtml({ value: "openai_compatible", label: "openai_compatible", selected: type === "openai_compatible" })}
-                          ${optionHtml({ value: "openai_responses", label: "openai_responses", selected: type === "openai_responses" })}
-                          ${optionHtml({ value: "anthropic", label: "anthropic", selected: type === "anthropic" })}
-                          ${optionHtml({ value: "anthropic_claude_code", label: "anthropic_claude_code", selected: type === "anthropic_claude_code" })}
+		          const providerTitle = pid || `provider_${idx + 1}`;
+		          const isExpanded = pKey in expanded ? expanded[pKey] === true : idx === 0;
+		          const headerBadges = [
+		            idx === 0 ? `<span class="status-badge status-badge--success">default</span>` : "",
+		            type ? `<span class="status-badge">${escapeHtml(type)}</span>` : "",
+		            models.length ? `<span class="status-badge">models: ${escapeHtml(String(models.length))}</span>` : `<span class="status-badge status-badge--warning">models: 0</span>`,
+		            apiKeySet ? `<span class="status-badge status-badge--success">key: set</span>` : `<span class="status-badge status-badge--warning">key: empty</span>`
+		          ]
+		            .filter(Boolean)
+		            .join("");
+
+		          return `
+		            <div class="provider-card${isExpanded ? " is-expanded" : ""}" data-provider-card data-provider-idx="${idx}" data-provider-key="${escapeHtml(pKey)}">
+		              <div class="provider-card__header" data-action="toggleProviderCard" data-idx="${idx}">
+		                <div class="flex-row flex-wrap">
+		                  <span class="icon-chevron">▶</span>
+		                  <strong class="text-mono">${escapeHtml(providerTitle)}</strong>
+	                  ${headerBadges}
+	                  ${baseUrl ? `<span class="text-muted text-xs text-mono">${escapeHtml(baseUrl)}</span>` : `<span class="text-muted text-xs">baseUrl: (empty)</span>`}
+	                </div>
+	                <div class="flex-row flex-wrap">
+	                  <button class="btn btn--small" data-action="makeProviderDefault" data-idx="${idx}" ${idx === 0 ? "disabled" : ""}>设为默认</button>
+	                  <button class="btn btn--small btn--danger" data-action="removeProvider" data-idx="${idx}">删除</button>
+	                </div>
+	              </div>
+	              <div class="provider-card__content-wrapper">
+	                <div class="provider-card__body">
+	                  <div class="provider-card__inner">
+	                    <div class="form-grid">
+	                      <div class="form-group">
+	                        <label class="form-label">ID</label>
+	                        <input type="text" data-p-idx="${idx}" data-p-key="id" value="${escapeHtml(pid)}" placeholder="openai" />
+	                      </div>
+	                      <div class="form-group">
+	                        <label class="form-label">Type</label>
+	                        <select data-p-idx="${idx}" data-p-key="type">
+	                          ${optionHtml({ value: "openai_compatible", label: "openai_compatible", selected: type === "openai_compatible" })}
+	                          ${optionHtml({ value: "openai_responses", label: "openai_responses", selected: type === "openai_responses" })}
+	                          ${optionHtml({ value: "anthropic", label: "anthropic", selected: type === "anthropic" })}
+	                          ${optionHtml({ value: "anthropic_claude_code", label: "anthropic_claude_code", selected: type === "anthropic_claude_code" })}
                           ${optionHtml({ value: "gemini_ai_studio", label: "gemini_ai_studio", selected: type === "gemini_ai_studio" })}
-                        </select>
-                      </td>
-                      <td><input type="text" data-p-idx="${idx}" data-p-key="baseUrl" value="${escapeHtml(baseUrl)}" placeholder="https://api.openai.com/v1" /></td>
-                      <td>
-                        <div class="row">
-                          <input type="password" data-p-idx="${idx}" data-p-key="apiKeyInput" value="" placeholder="${apiKeySet ? "(set)" : "(empty)"}" />
-                          <button class="btn" data-action="clearProviderKey" data-idx="${idx}">Clear</button>
-                        </div>
-                      </td>
-                      <td>
-                        <div class="row">
-                          <span class="badge">${escapeHtml(String(models.length))}</span>
-                          <button class="btn" data-action="fetchProviderModels" data-idx="${idx}">Fetch</button>
-                          <button class="btn" data-action="editProviderModels" data-idx="${idx}">Edit</button>
-                        </div>
-                      </td>
-                      <td>
-                        <select data-p-idx="${idx}" data-p-key="defaultModel">
-                          ${optionHtml({ value: "", label: "(auto)", selected: !dm })}
-                          ${modelOptions.map((m) => optionHtml({ value: m, label: m, selected: dm === m })).join("")}
-                        </select>
-                      </td>
-                      <td>
-                        <div class="row">
-                          <button class="btn" data-action="editProviderHeaders" data-idx="${idx}">Headers</button>
-                          <button class="btn" data-action="editProviderRequestDefaults" data-idx="${idx}">Defaults</button>
-                        </div>
-                      </td>
-                      <td><button class="btn danger" data-action="removeProvider" data-idx="${idx}">Remove</button></td>
-                    </tr>
-                  `;
-                })
-                .join("") || `<tr><td colspan="8" class="small">(no providers)</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
+	                        </select>
+	                      </div>
+	                      <div class="form-group form-grid--full">
+	                        <label class="form-label">Base URL</label>
+	                        <input type="url" data-p-idx="${idx}" data-p-key="baseUrl" value="${escapeHtml(baseUrl)}" placeholder="https://api.openai.com/v1" />
+	                      </div>
+	                      <div class="form-group form-grid--full">
+	                        <div class="flex-between flex-row">
+	                          <label class="form-label">API Key</label>
+	                          ${apiKeySet ? `<span class="status-badge status-badge--success">set</span>` : `<span class="status-badge status-badge--warning">empty</span>`}
+	                        </div>
+	                        <div class="flex-row">
+	                          <input type="password" data-p-idx="${idx}" data-p-key="apiKeyInput" value="" placeholder="${apiKeySet ? "(set)" : "(empty)"}" />
+	                          <button class="btn btn--icon btn--danger" data-action="clearProviderKey" data-idx="${idx}" title="清空 API Key">✕</button>
+	                        </div>
+	                      </div>
+	                      <div class="form-group">
+	                        <label class="form-label">Models</label>
+	                        <div class="flex-row flex-wrap">
+	                          <span class="status-badge">${escapeHtml(String(models.length))}</span>
+	                          <button class="btn btn--small" data-action="fetchProviderModels" data-idx="${idx}">拉取</button>
+	                          <button class="btn btn--small" data-action="editProviderModels" data-idx="${idx}">编辑</button>
+	                        </div>
+	                      </div>
+	                      <div class="form-group">
+	                        <label class="form-label">Default Model</label>
+	                        <select data-p-idx="${idx}" data-p-key="defaultModel">
+	                          ${optionHtml({ value: "", label: "(auto)", selected: !dm })}
+	                          ${modelOptions.map((m) => optionHtml({ value: m, label: m, selected: dm === m })).join("")}
+	                        </select>
+	                      </div>
+	                      <div class="form-group">
+	                        <label class="form-label">思考等级</label>
+	                        <select data-p-idx="${idx}" data-p-key="thinkingLevel" ${thinkingUi.supported ? "" : "disabled"}>
+	                          ${optionHtml({ value: "", label: "(Default)", selected: thinkingUi.value === "" })}
+	                          ${optionHtml({ value: "low", label: "Low", selected: thinkingUi.value === "low" })}
+	                          ${optionHtml({ value: "medium", label: "Medium", selected: thinkingUi.value === "medium" })}
+	                          ${optionHtml({ value: "high", label: "High", selected: thinkingUi.value === "high" })}
+	                          ${optionHtml({ value: "extra", label: "Extra high", selected: thinkingUi.value === "extra" })}
+	                          ${thinkingUi.value === "custom" ? optionHtml({ value: "custom", label: "(Custom / keep)", selected: true }) : ""}
+	                        </select>
+	                        <div class="text-muted text-xs">${escapeHtml(thinkingUi.hint)}</div>
+	                      </div>
+	                      <div class="form-group form-grid--full">
+	                        <label class="form-label">Advanced</label>
+	                        <div class="flex-row flex-wrap">
+	                          <button class="btn btn--small" data-action="editProviderHeaders" data-idx="${idx}">Headers</button>
+	                          <button class="btn btn--small" data-action="editProviderRequestDefaults" data-idx="${idx}">Defaults</button>
+	                        </div>
+	                      </div>
+	                    </div>
+	                  </div>
+	                </div>
+	              </div>
+	            </div>
+	          `;
+	        })
+	        .join("");
+
+	      return `
+	        <section class="settings-panel">
+	          <header class="settings-panel__header">
+	            <span>Providers</span>
+	            <div class="flex-row flex-wrap">
+	              <button class="btn btn--small btn--primary" data-action="addProvider">+ 新增 Provider</button>
+	            </div>
+	          </header>
+	          <div class="settings-panel__body">
+	            <div class="text-muted text-xs">约定：列表第 1 个（<span class="text-mono">providers[0]</span>）为默认 BYOK provider。</div>
+	            <div style="height:8px;"></div>
+	            <div class="provider-list">
+	              ${list || `<div class="text-muted" style="text-align:center;padding:20px;">暂无 Provider，请点击右上角新增。</div>`}
+	            </div>
+	          </div>
+	        </section>
+	      `;
+	    })();
 
     const historySummary = c.historySummary && typeof c.historySummary === "object" ? c.historySummary : {};
     const hsEnabled = historySummary.enabled === true;
     const hsProviderId = normalizeStr(historySummary.providerId);
     const hsModel = normalizeStr(historySummary.model);
     const hsByokModel = hsProviderId && hsModel ? `byok:${hsProviderId}:${hsModel}` : "";
-    const hsModelGroups = providers
-      .map((p) => {
-        const pid = normalizeStr(p?.id);
-        const dm = normalizeStr(p?.defaultModel);
-        const rawModels = Array.isArray(p?.models) ? p.models : [];
-        const models = uniq(rawModels.map((m) => normalizeStr(m)).filter(Boolean).concat(dm ? [dm] : [])).sort((a, b) => a.localeCompare(b));
-        return { pid, models };
-      })
-      .filter((g) => g && g.pid && Array.isArray(g.models) && g.models.length)
-      .sort((a, b) => a.pid.localeCompare(b.pid));
-    const historySummaryHtml = `
-      <div class="card">
-        <div class="title">History Summary（上下文压缩）</div>
-        <div class="hint">
-          启用后会在后台自动做“滚动摘要”，用于避免上下文溢出；面板/聊天 UI 仍显示完整历史（压缩仅用于发给上游模型）。
-          高级参数使用默认值（当前面板未提供高级字段编辑）。
-        </div>
-        <div class="grid">
-          <div>historySummary.enabled</div>
-          <div class="row">
-            <input type="checkbox" id="historySummaryEnabled" ${hsEnabled ? "checked" : ""} />
-            <span class="small">启用</span>
-          </div>
-          <div>historySummary.model</div>
-          <div>
-            <select id="historySummaryByokModel">
-              ${optionHtml({ value: "", label: "(follow current request)", selected: !hsByokModel })}
-              ${hsModelGroups
-                .map((g) => {
-                  const options = g.models
-                    .map((m) => {
-                      const v = `byok:${g.pid}:${m}`;
-                      return optionHtml({ value: v, label: m, selected: v === hsByokModel });
-                    })
-                    .join("");
-                  return `<optgroup label="${escapeHtml(g.pid)}">${options}</optgroup>`;
-                })
-                .join("")}
-            </select>
-            <div class="small">留空则跟随当前对话模型；选择项来自 providers[].models。</div>
-          </div>
-          <div>cache</div>
-          <div class="row">
-            <button class="btn" data-action="clearHistorySummaryCache">Clear Summary Cache</button>
-            <span class="small">仅清理后台摘要复用缓存，不影响 UI 历史显示。</span>
-          </div>
-        </div>
-      </div>
-    `;
+	    const hsModelGroups = providers
+	      .map((p) => {
+	        const pid = normalizeStr(p?.id);
+	        const dm = normalizeStr(p?.defaultModel);
+	        const rawModels = Array.isArray(p?.models) ? p.models : [];
+	        const models = uniq(rawModels.map((m) => normalizeStr(m)).filter(Boolean).concat(dm ? [dm] : [])).sort((a, b) => a.localeCompare(b));
+	        return { pid, models };
+	      })
+	      .filter((g) => g && g.pid && Array.isArray(g.models) && g.models.length)
+	      .sort((a, b) => a.pid.localeCompare(b.pid));
+	    const historySummaryHtml = `
+	      <section class="settings-panel">
+	        <header class="settings-panel__header">
+	          <span>History Summary</span>
+	          ${hsEnabled ? `<span class="status-badge status-badge--success">enabled</span>` : `<span class="status-badge status-badge--warning">disabled</span>`}
+	        </header>
+	        <div class="settings-panel__body">
+	          <div class="form-grid">
+	            <div class="form-group">
+	              <label class="form-label">启用</label>
+	              <label class="checkbox-wrapper">
+	                <input type="checkbox" id="historySummaryEnabled" ${hsEnabled ? "checked" : ""} />
+	                <span>启用</span>
+	              </label>
+	              <div class="text-muted text-xs">启用后会在后台自动做“滚动摘要”，用于避免上下文溢出（仅影响发给上游模型的内容）。</div>
+	            </div>
+	            <div class="form-group">
+	              <label class="form-label">Model</label>
+	              <select id="historySummaryByokModel">
+	                ${optionHtml({ value: "", label: "(follow current request)", selected: !hsByokModel })}
+	                ${hsModelGroups
+	                  .map((g) => {
+	                    const options = g.models
+	                      .map((m) => {
+	                        const v = `byok:${g.pid}:${m}`;
+	                        return optionHtml({ value: v, label: m, selected: v === hsByokModel });
+	                      })
+	                      .join("");
+	                    return `<optgroup label="${escapeHtml(g.pid)}">${options}</optgroup>`;
+	                  })
+	                  .join("")}
+	              </select>
+	              <div class="text-muted text-xs">留空则跟随当前对话模型；候选项来自 providers[].models。</div>
+	            </div>
+	            <div class="form-group form-grid--full">
+	              <div class="flex-row flex-wrap">
+	                <button class="btn btn--small" data-action="clearHistorySummaryCache">清理摘要缓存</button>
+	                <span class="text-muted text-xs">仅清理后台摘要复用缓存，不影响 UI 历史显示。</span>
+	              </div>
+	            </div>
+	          </div>
+	        </div>
+	      </section>
+	    `;
 
     const providerMap = computeProviderIndexById(c);
     const llmGroup = ENDPOINT_GROUPS_V1.find((g) => g && g.id === "llm_data_plane");
@@ -595,31 +729,30 @@
       })
       .join("");
 
-    const endpointRules = `
-      <div class="card">
-        <div class="title">Endpoint Rules</div>
-	        <div class="hint">
-	          这里统一管理 endpoint 的 <span class="mono">Routing</span> + <span class="mono">Disable</span>。
-	          <span class="mono">disabled</span> 表示本地 no-op（不发网络请求），用于屏蔽遥测/排查调用链。
-	          当前清单包含 <span class="mono">${escapeHtml(String(knownEndpoints.length))}</span> 个已知 endpoint；只有当 Augment 实际调用到该 endpoint 时规则才会生效。
-	          未显式设置则默认 <span class="mono">official</span>。
-	          <br/>
-	          说明：当前仅 <span class="mono">LLM 数据面（13）</span> 支持 <span class="mono">byok</span>；其它端点默认只能 <span class="mono">official/disabled</span>。
+	    const endpointRules = `
+	      <section class="settings-panel">
+	        <header class="settings-panel__header">
+	          <span>Endpoint Rules</span>
+	          <span class="status-badge">${escapeHtml(String(knownEndpoints.length))} endpoints</span>
+	        </header>
+	        <div class="settings-panel__body">
+	          <div class="text-muted text-xs">统一管理 endpoint 的 Routing / Disable；未设置默认 official；仅 LLM 数据面支持 byok。</div>
+	          <div style="height:10px;"></div>
+	          <div class="flex-row flex-wrap" style="margin-bottom:8px;">
+	            <input type="search" id="endpointSearch" value="${escapeHtml(endpointSearchText)}" placeholder="搜索 endpoint 或含义（支持子串过滤，例如 /record-、GitHub、token）" />
+	            <span class="text-muted text-xs" id="endpointFilterCount"></span>
+	          </div>
+	          ${endpointGroupsHtml || `<div class="text-muted text-xs">(no endpoints)</div>`}
 	        </div>
-        <div class="row" style="margin-bottom:8px;gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="text" id="endpointSearch" value="${escapeHtml(endpointSearchText)}" placeholder="搜索 endpoint 或含义（支持子串过滤，例如 /record-、GitHub、token）" />
-          <span class="small" id="endpointFilterCount"></span>
-        </div>
-        ${endpointGroupsHtml || `<div class="small">(no endpoints)</div>`}
-      </div>
-    `;
+	      </section>
+	    `;
 
     const m = modal && typeof modal === "object" ? modal : null;
     const mKind = normalizeStr(m?.kind);
     const mIdx = Number(m?.idx);
-    const mProvider = Number.isFinite(mIdx) && mIdx >= 0 && mIdx < providers.length ? providers[mIdx] : null;
-    const modalHtml =
-      !mKind
+	    const mProvider = Number.isFinite(mIdx) && mIdx >= 0 && mIdx < providers.length ? providers[mIdx] : null;
+	    const modalHtml =
+	      !mKind
         ? ""
         : mKind === "confirmReset"
           ? `
@@ -658,25 +791,25 @@
                   </div>
                 </div>
               </div>
-            `;
-          })();
+	            `;
+	          })();
 
-    return `
-      <div class="wrap${isSideCollapsed ? " side-collapsed" : ""}">
-        <div class="main">
-          <div class="toolbar">${toolbar}</div>
-          <div class="status" id="status">${escapeHtml(status || "Ready.")}</div>
-          ${saveHint}
-          ${general}
-          ${official}
-          ${providersHtml}
-          ${historySummaryHtml}
-          ${endpointRules}
-          ${selfTestHtml}
-        </div>
-        <div class="side" id="side">${ns.summarizeSummaryBox(summary)}</div>
-      </div>
-      ${modalHtml}
-    `;
-  };
+	    return `
+	      <div class="app-container">
+	        ${appHeader}
+	        ${official}
+	        ${providersHtml}
+	        ${historySummaryHtml}
+	        ${endpointRules}
+	        ${selfTestHtml}
+	        <section class="settings-panel">
+	          <header class="settings-panel__header">
+	            <span>Summary</span>
+	          </header>
+	          <div class="settings-panel__body">${ns.summarizeSummaryBox(summary)}</div>
+	        </section>
+	      </div>
+	      ${modalHtml}
+	    `;
+	  };
 })();

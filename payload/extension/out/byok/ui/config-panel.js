@@ -1,12 +1,14 @@
 "use strict";
 
 const { info, warn } = require("../infra/log");
-const { normalizeString } = require("../infra/util");
+const { normalizeString, normalizeRawToken } = require("../infra/util");
 const { defaultConfig } = require("../config/config");
 const { setRuntimeEnabled: setRuntimeEnabledPersisted } = require("../config/state");
 const { clearHistorySummaryCacheAll } = require("../core/augment-history-summary-auto");
 const { runSelfTest } = require("../core/self-test");
 const { fetchProviderModels } = require("../providers/models");
+const { joinBaseUrl, safeFetch } = require("../providers/http");
+const { readHttpErrorDetail } = require("../providers/request-util");
 const { renderConfigPanelHtml } = require("./config-panel.html");
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 120000;
@@ -69,6 +71,29 @@ function createHandlers({ vscode, ctx, cfgMgr, state, panel }) {
       postStatus(panel, rr.ok ? "Reloaded (OK)." : `Reload failed (${rr.reason || "unknown"}) (kept last-good).`);
       postRender(panel, cfgMgr, state);
     },
+    reloadWindow: async () => {
+      try {
+        const pick = await vscode.window.showWarningMessage(
+          "这会重载 VS Code（用于真正重载插件/主面板）。建议优先选择“重启扩展宿主”。",
+          { modal: true },
+          "重启扩展宿主",
+          "重载窗口"
+        );
+        if (pick === "重启扩展宿主") {
+          await vscode.commands.executeCommand("workbench.action.restartExtensionHost");
+          return;
+        }
+        if (pick === "重载窗口") {
+          await vscode.commands.executeCommand("workbench.action.reloadWindow");
+          return;
+        }
+        postStatus(panel, "Reload canceled.");
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        warn("reloadWindow failed:", m);
+        postStatus(panel, `Reload failed: ${m}`);
+      }
+    },
     disableRuntime: async () => {
       await setRuntimeEnabledPersisted(ctx, false);
       info("BYOK disabled (rollback) via panel");
@@ -125,6 +150,46 @@ function createHandlers({ vscode, ctx, cfgMgr, state, panel }) {
         const m = err instanceof Error ? err.message : String(err);
         warn("fetchProviderModels failed:", m);
         post(panel, { type: "providerModelsFailed", idx, error: `Fetch models failed: ${m}` });
+      }
+    },
+    testOfficialGetModels: async (msg) => {
+      const cfg = msg && typeof msg === "object" && msg.config && typeof msg.config === "object" ? msg.config : cfgMgr.get();
+      const off = cfg?.official && typeof cfg.official === "object" ? cfg.official : {};
+      const completionUrl = normalizeString(off.completionUrl) || "https://api.augmentcode.com/";
+      const apiToken = normalizeRawToken(off.apiToken);
+
+      const url = joinBaseUrl(completionUrl, "get-models");
+      if (!url) {
+        post(panel, { type: "officialGetModelsFailed", error: "Official /get-models failed: completion_url 无效（无法拼接 get-models）" });
+        return;
+      }
+
+      const headers = { "content-type": "application/json" };
+      if (apiToken) headers.authorization = `Bearer ${apiToken}`;
+
+      try {
+        const startedAtMs = Date.now();
+        const resp = await safeFetch(url, { method: "POST", headers, body: "{}" }, { timeoutMs: 12000, label: "official/get-models" });
+        if (!resp.ok) throw new Error(`get-models ${resp.status}: ${await readHttpErrorDetail(resp, { maxChars: 300 })}`.trim());
+        const json = await resp.json().catch(() => null);
+        if (!json || typeof json !== "object") throw new Error("get-models 响应不是 JSON 对象");
+
+        const defaultModel = normalizeString(json.default_model ?? json.defaultModel);
+        const modelsCount = Array.isArray(json.models) ? json.models.length : 0;
+        const featureFlagsCount =
+          json.feature_flags && typeof json.feature_flags === "object" && !Array.isArray(json.feature_flags) ? Object.keys(json.feature_flags).length : 0;
+
+        post(panel, {
+          type: "officialGetModelsOk",
+          modelsCount,
+          defaultModel,
+          featureFlagsCount,
+          elapsedMs: Date.now() - startedAtMs
+        });
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        warn("testOfficialGetModels failed:", m);
+        post(panel, { type: "officialGetModelsFailed", error: `Official /get-models failed: ${m}` });
       }
     },
     cancelSelfTest: async () => {

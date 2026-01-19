@@ -6,6 +6,7 @@ const { debug, warn } = require("../infra/log");
 const { ensureConfigManager, state, captureAugmentToolDefinitions } = require("../config/state");
 const { decideRoute } = require("../core/router");
 const { normalizeEndpoint, normalizeString, normalizeRawToken, safeTransform, emptyAsyncGenerator } = require("../infra/util");
+const { truncateTextForPrompt: truncateText } = require("../infra/text");
 const { normalizeBlobsMap, coerceBlobText } = require("../core/blob-utils");
 const { extractDiagnosticsList, pickDiagnosticPath, pickDiagnosticStartLine, pickDiagnosticEndLine } = require("../core/diagnostics-utils");
 const { pickPath, pickNumResults, pickBlobNameHint } = require("../core/next-edit-fields");
@@ -18,7 +19,8 @@ const { openAiResponsesCompleteText, openAiResponsesStreamTextDeltas, openAiResp
 const { anthropicCompleteText, anthropicStreamTextDeltas, anthropicChatStreamChunks } = require("../providers/anthropic");
 const { anthropicClaudeCodeCompleteText, anthropicClaudeCodeStreamTextDeltas, anthropicClaudeCodeChatStreamChunks } = require("../providers/anthropic-claude-code");
 const { geminiCompleteText, geminiStreamTextDeltas, geminiChatStreamChunks } = require("../providers/gemini");
-const { joinBaseUrl, safeFetch, readTextLimit } = require("../providers/http");
+const { joinBaseUrl, safeFetch } = require("../providers/http");
+const { readHttpErrorDetail } = require("../providers/request-util");
 const { getOfficialConnection } = require("../config/official");
 const {
   normalizeAugmentChatRequest,
@@ -92,7 +94,10 @@ function providerRequestContext(provider) {
   const baseUrl = normalizeString(provider.baseUrl);
   const apiKey = resolveProviderApiKey(provider, providerLabel(provider));
   const extraHeaders = provider.headers && typeof provider.headers === "object" ? provider.headers : {};
-  const requestDefaults = provider.requestDefaults && typeof provider.requestDefaults === "object" ? provider.requestDefaults : {};
+  const requestDefaultsRaw = provider.requestDefaults && typeof provider.requestDefaults === "object" ? provider.requestDefaults : {};
+
+  const requestDefaults =
+    requestDefaultsRaw && typeof requestDefaultsRaw === "object" && !Array.isArray(requestDefaultsRaw) ? requestDefaultsRaw : {};
   if (!apiKey && Object.keys(extraHeaders).length === 0) throw new Error(`${providerLabel(provider)} 未配置 api_key（且 headers 为空）`);
   return { type, baseUrl, apiKey, extraHeaders, requestDefaults };
 }
@@ -457,7 +462,7 @@ async function fetchOfficialGetModels({ completionURL, apiToken, timeoutMs, abor
   const headers = { "content-type": "application/json" };
   if (apiToken) headers.authorization = `Bearer ${apiToken}`;
   const resp = await safeFetch(url, { method: "POST", headers, body: "{}" }, { timeoutMs, abortSignal, label: "augment/get-models" });
-  if (!resp.ok) throw new Error(`get-models ${resp.status}: ${await readTextLimit(resp, 300)}`.trim());
+  if (!resp.ok) throw new Error(`get-models ${resp.status}: ${await readHttpErrorDetail(resp, { maxChars: 300 })}`.trim());
   const json = await resp.json().catch(() => null);
   if (!json || typeof json !== "object") throw new Error("get-models 响应不是 JSON 对象");
   return json;
@@ -506,7 +511,7 @@ async function fetchOfficialImplicitExternalSources({ completionURL, apiToken, m
     { method: "POST", headers, body: JSON.stringify(payload) },
     { timeoutMs, abortSignal, label: "augment/get-implicit-external-sources" }
   );
-  if (!resp.ok) throw new Error(`get-implicit-external-sources ${resp.status}: ${await readTextLimit(resp, 300)}`.trim());
+  if (!resp.ok) throw new Error(`get-implicit-external-sources ${resp.status}: ${await readHttpErrorDetail(resp, { maxChars: 300 })}`.trim());
   return await resp.json().catch(() => null);
 }
 
@@ -521,7 +526,7 @@ async function fetchOfficialSearchExternalSources({ completionURL, apiToken, que
     { method: "POST", headers, body: JSON.stringify(payload) },
     { timeoutMs, abortSignal, label: "augment/search-external-sources" }
   );
-  if (!resp.ok) throw new Error(`search-external-sources ${resp.status}: ${await readTextLimit(resp, 300)}`.trim());
+  if (!resp.ok) throw new Error(`search-external-sources ${resp.status}: ${await readHttpErrorDetail(resp, { maxChars: 300 })}`.trim());
   return await resp.json().catch(() => null);
 }
 
@@ -537,7 +542,7 @@ async function fetchOfficialContextCanvasList({ completionURL, apiToken, pageSiz
     { method: "POST", headers, body: JSON.stringify(payload) },
     { timeoutMs, abortSignal, label: "augment/context-canvas/list" }
   );
-  if (!resp.ok) throw new Error(`context-canvas/list ${resp.status}: ${await readTextLimit(resp, 300)}`.trim());
+  if (!resp.ok) throw new Error(`context-canvas/list ${resp.status}: ${await readHttpErrorDetail(resp, { maxChars: 300 })}`.trim());
   return await resp.json().catch(() => null);
 }
 
@@ -566,13 +571,6 @@ function normalizeOfficialContextCanvasListResponse(raw) {
       ? normalizeString(r.next_page_token ?? r.nextPageToken ?? r.next_pageToken ?? r.page_token ?? r.pageToken ?? "")
       : "";
   return { canvases: out, nextPageToken };
-}
-
-function truncateText(s, maxChars) {
-  const text = typeof s === "string" ? s : String(s ?? "");
-  const max = Number.isFinite(Number(maxChars)) && Number(maxChars) > 0 ? Math.floor(Number(maxChars)) : 2000;
-  if (!text.trim()) return "";
-  return text.length > max ? text.slice(0, max).trimEnd() + "…" : text.trim();
 }
 
 function formatContextCanvasForPrompt(canvas, { canvasId } = {}) {
@@ -702,7 +700,7 @@ async function fetchOfficialCodebaseRetrieval({ completionURL, apiToken, informa
       const json = await resp.json().catch(() => null);
       return { ok: true, json };
     }
-    const text = String(await readTextLimit(resp, 300) || "").trim();
+    const text = String(await readHttpErrorDetail(resp, { maxChars: 300 }) || "").trim();
     return { ok: false, status: resp.status, text };
   };
 
@@ -1034,14 +1032,14 @@ async function maybeHandleCallApi({ endpoint, body, transform, timeoutMs, abortS
 
   const t = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_UPSTREAM_TIMEOUT_MS;
 
-  if (ep === "/get-models") {
-    const byokModels = buildByokModelsFromConfig(cfg);
-    const byokDefaultModel = byokModels.length ? byokModels[0] : "";
-    const activeProviderId = normalizeString(cfg?.routing?.defaultProviderId) || normalizeString(cfg?.providers?.[0]?.id);
-    const activeProvider = Array.isArray(cfg?.providers) ? cfg.providers.find((p) => p && normalizeString(p.id) === activeProviderId) : null;
-    const activeProviderDefaultModel = normalizeString(activeProvider?.defaultModel) || normalizeString(activeProvider?.models?.[0]);
-    const preferredByok = activeProviderId && activeProviderDefaultModel ? `byok:${activeProviderId}:${activeProviderDefaultModel}` : "";
-    const preferredDefaultModel = byokModels.includes(preferredByok) ? preferredByok : byokDefaultModel;
+	  if (ep === "/get-models") {
+	    const byokModels = buildByokModelsFromConfig(cfg);
+	    const byokDefaultModel = byokModels.length ? byokModels[0] : "";
+	    const activeProvider = Array.isArray(cfg?.providers) ? cfg.providers[0] : null;
+	    const activeProviderId = normalizeString(activeProvider?.id);
+	    const activeProviderDefaultModel = normalizeString(activeProvider?.defaultModel) || normalizeString(activeProvider?.models?.[0]);
+	    const preferredByok = activeProviderId && activeProviderDefaultModel ? `byok:${activeProviderId}:${activeProviderDefaultModel}` : "";
+	    const preferredDefaultModel = byokModels.includes(preferredByok) ? preferredByok : byokDefaultModel;
     try {
       const off = getOfficialConnection();
       const completionURL = normalizeString(upstreamCompletionURL) || off.completionURL;

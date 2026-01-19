@@ -1,7 +1,7 @@
 # CI（rolling release + 增量审查）
 
 工作流：
-- `build-release`：`push main` 构建 VSIX，更新 Release tag `rolling`，并上传审计产物
+- `build-release`：`push` 默认分支（`master`/`main`）构建 VSIX，更新 Release tag `rolling`，并上传审计产物
 - `upstream-check`：定时拉最新上游 VSIX，版本变化则 PR 更新 `upstream.lock.json`
 
 审计产物（diff 入口）：

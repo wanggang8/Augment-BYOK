@@ -5,10 +5,11 @@ function escapeJsonForHtml(s) {
 }
 
 function renderConfigPanelHtml({ vscode, webview, ctx, init }) {
-  const utilUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.webview.util.js"));
-  const renderUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.webview.render.js"));
-  const mainUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.webview.js"));
-  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.css"));
+  const cacheBust = String(Date.now().toString(16));
+  const utilUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.webview.util.js")) + `?v=${cacheBust}`;
+  const renderUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.webview.render.js")) + `?v=${cacheBust}`;
+  const mainUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.webview.js")) + `?v=${cacheBust}`;
+  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "out", "byok", "ui", "config-panel.css")) + `?v=${cacheBust}`;
 
   const csp = [
     "default-src 'none'",

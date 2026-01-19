@@ -22,7 +22,7 @@
   - `id`：provider 标识（`byok:<providerId>:...`）
   - `type`：`openai_compatible` | `openai_responses` | `anthropic` | `gemini_ai_studio`
   - `baseUrl`、`apiKey`（可空，若 `headers` 已含鉴权）、`headers`、`models`、`defaultModel`、`requestDefaults`
-- `routing`：`defaultProviderId`、`rules[endpoint]`（`mode=official|byok|disabled`）
+- `routing`：`rules[endpoint]`（`mode=official|byok|disabled`；provider 留空时默认使用 `providers[0]`）
 - `historySummary`：面板只暴露 `enabled` + `model`；其它字段默认/保留
 - `telemetry.disabledEndpoints`：legacy（会迁移到 `routing.rules[*].mode=disabled`）
 
@@ -36,3 +36,5 @@
   - 关闭：请求体 `disable_retrieval=true` 或 `disableRetrieval=true`
   - 失败：忽略（不影响 BYOK 生成）
 - 工具调用：会做 tool_result 配对修复避免 400/422（实现见 `payload/extension/out/byok/core/tool-pairing.js`）
+- Anthropic：`requestDefaults` 会自动过滤 OpenAI-only 字段（如 `presence_penalty`、`response_format`、`stream_options`），并兼容 `stop`→`stop_sequences`、`topP/topK`→`top_p/top_k`
+- Anthropic：遇到 400/422 会自动做一次“最小化 requestDefaults”重试（保留 `max_tokens`），降低偶发 INVALID_ARGUMENT

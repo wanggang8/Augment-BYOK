@@ -34,28 +34,38 @@
 
   const persisted = getPersistedState();
   const persistedSideCollapsed = persisted && typeof persisted === "object" ? Boolean(persisted.sideCollapsed) : false;
-  const persistedEndpointSearch =
-    persisted && typeof persisted === "object"
-      ? normalizeStr(persisted.endpointSearch) || normalizeStr(persisted.telemetrySearch) || normalizeStr(persisted.routingAddSearch)
-      : "";
+	  const persistedEndpointSearch =
+	    persisted && typeof persisted === "object"
+	      ? normalizeStr(persisted.endpointSearch) || normalizeStr(persisted.telemetrySearch) || normalizeStr(persisted.routingAddSearch)
+	      : "";
+	  const persistedProviderExpanded =
+	    persisted && typeof persisted === "object" && persisted.providerExpanded && typeof persisted.providerExpanded === "object" && !Array.isArray(persisted.providerExpanded)
+	      ? persisted.providerExpanded
+	      : {};
 
-  let uiState = {
-    cfg: {},
-    summary: {},
-    status: "Ready.",
-    clearOfficialToken: false,
-    modal: null,
-    dirty: false,
-    selfTest: { running: false, logs: [], report: null },
-    sideCollapsed: persistedSideCollapsed,
-    endpointSearch: persistedEndpointSearch
-  };
+		  let uiState = {
+		    cfg: {},
+		    summary: {},
+		    status: "Ready.",
+		    clearOfficialToken: false,
+		    officialTest: { running: false, ok: null, text: "" },
+		    providerExpanded: persistedProviderExpanded,
+		    modal: null,
+		    dirty: false,
+		    selfTest: { running: false, logs: [], report: null },
+		    sideCollapsed: persistedSideCollapsed,
+		    endpointSearch: persistedEndpointSearch
+		  };
 
-  function updateDirtyBadge() {
-    const el = qs("#dirtyBadge");
-    if (!el) return;
-    el.textContent = uiState.dirty ? "pending" : "saved";
-  }
+	  function updateDirtyBadge() {
+	    const el = qs("#dirtyBadge");
+	    if (!el) return;
+	    el.textContent = uiState.dirty ? "pending" : "saved";
+	    try {
+	      el.classList.toggle("status-badge--warning", uiState.dirty);
+	      el.classList.toggle("status-badge--success", !uiState.dirty);
+	    } catch { }
+	  }
 
   function updateStatusText(text) {
     const el = qs("#status");
@@ -151,6 +161,53 @@
         continue;
       }
 
+      if (key === "thinkingLevel") {
+        const level = normalizeStr(el.value);
+        const providerType = normalizeStr(p.type);
+        p.requestDefaults =
+          p.requestDefaults && typeof p.requestDefaults === "object" && !Array.isArray(p.requestDefaults) ? p.requestDefaults : {};
+        const rd = p.requestDefaults;
+
+        if (providerType === "openai_responses") {
+          if (level === "custom") continue;
+          const effort = level === "extra" ? "extra_high" : level;
+          if (effort === "low" || effort === "medium" || effort === "high" || effort === "extra_high") {
+            const reasoning = rd.reasoning && typeof rd.reasoning === "object" && !Array.isArray(rd.reasoning) ? rd.reasoning : {};
+            reasoning.effort = effort;
+            rd.reasoning = reasoning;
+            try { delete rd.__byok_thinking_level; } catch { }
+          } else {
+            if (rd.reasoning && typeof rd.reasoning === "object" && !Array.isArray(rd.reasoning)) {
+              try { delete rd.reasoning.effort; } catch { }
+              if (Object.keys(rd.reasoning).length === 0) {
+                try { delete rd.reasoning; } catch { }
+              }
+            }
+            try { delete rd.__byok_thinking_level; } catch { }
+          }
+          p.requestDefaults = rd;
+          continue;
+        }
+
+        if (providerType === "anthropic") {
+          if (level === "custom") continue;
+          const budgetByLevel = { low: 1024, medium: 2048, high: 4096, extra: 8192 };
+          const budget = budgetByLevel[level];
+          if (budget) {
+            const thinking = rd.thinking && typeof rd.thinking === "object" && !Array.isArray(rd.thinking) ? rd.thinking : {};
+            thinking.type = "enabled";
+            thinking.budget_tokens = budget;
+            rd.thinking = thinking;
+          } else {
+            try { delete rd.thinking; } catch { }
+          }
+          p.requestDefaults = rd;
+          continue;
+        }
+
+        continue;
+      }
+
       p[key] = normalizeStr(el.value);
     }
 
@@ -205,9 +262,8 @@
       cfg.historySummary.model = parsedHsModel.modelId;
     }
 
-    cfg.routing = cfg.routing && typeof cfg.routing === "object" ? cfg.routing : {};
-    cfg.routing.defaultProviderId = normalizeStr(qs("#defaultProviderId")?.value);
-    try { delete cfg.routing.defaultMode; } catch { }
+	    cfg.routing = cfg.routing && typeof cfg.routing === "object" ? cfg.routing : {};
+	    try { delete cfg.routing.defaultMode; } catch { }
 
     cfg.official = cfg.official && typeof cfg.official === "object" ? cfg.official : {};
     cfg.official.completionUrl = normalizeStr(qs("#officialCompletionUrl")?.value);
@@ -261,16 +317,16 @@
     return out;
   }
 
-  function setUiState(patch, { preserveEdits = true } = {}) {
-    if (preserveEdits) {
-      try {
-        if (qs("#defaultProviderId")) uiState.cfg = gatherConfigFromDom();
-      } catch { }
-    }
-    uiState = { ...uiState, ...(patch || {}) };
-    if (patch && typeof patch === "object" && "sideCollapsed" in patch) setPersistedState({ sideCollapsed: Boolean(uiState.sideCollapsed) });
-    render();
-  }
+	  function setUiState(patch, { preserveEdits = true } = {}) {
+	    if (preserveEdits) {
+	      try {
+	        if (qs("#officialCompletionUrl")) uiState.cfg = gatherConfigFromDom();
+	      } catch { }
+	    }
+	    uiState = { ...uiState, ...(patch || {}) };
+	    if (patch && typeof patch === "object" && "sideCollapsed" in patch) setPersistedState({ sideCollapsed: Boolean(uiState.sideCollapsed) });
+	    render();
+	  }
 
   window.addEventListener("message", (ev) => {
     const msg = ev.data;
@@ -317,37 +373,76 @@
         { preserveEdits: true }
       );
     }
-    if (t === "selfTestCanceled") {
-      const prev = uiState.selfTest && typeof uiState.selfTest === "object" ? uiState.selfTest : { running: false, logs: [], report: null };
-      return setUiState({ selfTest: { ...prev, running: false }, status: "Self Test canceled." }, { preserveEdits: true });
-    }
-  });
+	    if (t === "selfTestCanceled") {
+	      const prev = uiState.selfTest && typeof uiState.selfTest === "object" ? uiState.selfTest : { running: false, logs: [], report: null };
+	      return setUiState({ selfTest: { ...prev, running: false }, status: "Self Test canceled." }, { preserveEdits: true });
+	    }
+	    if (t === "officialGetModelsOk") {
+	      const modelsCount = Number.isFinite(Number(msg?.modelsCount)) ? Number(msg.modelsCount) : 0;
+	      const defaultModel = normalizeStr(msg?.defaultModel);
+	      const featureFlagsCount = Number.isFinite(Number(msg?.featureFlagsCount)) ? Number(msg.featureFlagsCount) : 0;
+	      const elapsedMs = Number.isFinite(Number(msg?.elapsedMs)) ? Math.max(0, Math.floor(Number(msg.elapsedMs))) : 0;
+	      const parts = [`models=${modelsCount}`];
+	      if (defaultModel) parts.push(`default=${defaultModel}`);
+	      if (featureFlagsCount) parts.push(`flags=${featureFlagsCount}`);
+	      if (elapsedMs) parts.push(`${elapsedMs}ms`);
+	      const text = parts.join(" ");
+	      return setUiState(
+	        { status: "Official /get-models OK.", officialTest: { running: false, ok: true, text } },
+	        { preserveEdits: true }
+	      );
+	    }
+	    if (t === "officialGetModelsFailed") {
+	      let err = normalizeStr(msg?.error) || "Official /get-models failed.";
+	      err = err.replace(/^Official\s+\/get-models\s+failed:\s*/i, "");
+	      return setUiState({ status: "Official /get-models failed.", officialTest: { running: false, ok: false, text: err } }, { preserveEdits: true });
+	    }
+	  });
 
-  document.addEventListener("click", (ev) => {
-    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-action]") : null;
-    if (!btn) return;
-    const action = btn.getAttribute("data-action");
+	  document.addEventListener("click", (ev) => {
+	    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-action]") : null;
+	    if (!btn) return;
+	    const action = btn.getAttribute("data-action");
 
-    if (action === "clearOfficialToken") {
-      setUiState({ clearOfficialToken: true, status: "Official token cleared (pending save).", dirty: true }, { preserveEdits: true });
-      return;
-    }
+	    if (action === "toggleProviderCard") {
+	      const card = btn.closest ? btn.closest("[data-provider-card]") : null;
+	      if (!card) return;
+	      card.classList.toggle("is-expanded");
+	      const key = normalizeStr(card.getAttribute("data-provider-key"));
+	      if (key) {
+	        const next = uiState.providerExpanded && typeof uiState.providerExpanded === "object" ? { ...uiState.providerExpanded } : {};
+	        next[key] = card.classList.contains("is-expanded");
+	        uiState.providerExpanded = next;
+	        setPersistedState({ providerExpanded: next });
+	      }
+	      return;
+	    }
 
-    if (action === "fetchProviderModels") {
-      const idx = Number(btn.getAttribute("data-idx"));
-      const cfg = gatherConfigFromDom();
-      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
+	    if (action === "clearOfficialToken") {
+	      setUiState({ clearOfficialToken: true, status: "Official token cleared (pending save).", dirty: true }, { preserveEdits: true });
+	      return;
+	    }
+
+	    if (action === "fetchProviderModels") {
+	      const idx = Number(btn.getAttribute("data-idx"));
+	      const cfg = gatherConfigFromDom();
+	      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
       const p = Number.isFinite(idx) && idx >= 0 && idx < cfg.providers.length ? cfg.providers[idx] : null;
       if (!p) return setUiState({ status: "Fetch Models: provider not found." }, { preserveEdits: true });
       vscode.postMessage({ type: "fetchProviderModels", idx, provider: p });
       setUiState({ status: `Fetching models... (Provider #${idx + 1})` }, { preserveEdits: true });
-      return;
-    }
+	      return;
+	    }
 
-    if (action === "runSelfTest") {
-      vscode.postMessage({ type: "runSelfTest", config: gatherConfigFromDom() });
-      return setUiState({ selfTest: { running: true, logs: [], report: null }, status: "Self Test starting..." }, { preserveEdits: true });
-    }
+	    if (action === "testOfficialGetModels") {
+	      vscode.postMessage({ type: "testOfficialGetModels", config: gatherConfigFromDom() });
+	      return setUiState({ status: "Testing Official /get-models...", officialTest: { running: true, ok: null, text: "" } }, { preserveEdits: true });
+	    }
+
+	    if (action === "runSelfTest") {
+	      vscode.postMessage({ type: "runSelfTest", config: gatherConfigFromDom() });
+	      return setUiState({ selfTest: { running: true, logs: [], report: null }, status: "Self Test starting..." }, { preserveEdits: true });
+	    }
     if (action === "cancelSelfTest") {
       vscode.postMessage({ type: "cancelSelfTest" });
       return setUiState({ status: "Canceling Self Test..." }, { preserveEdits: true });
@@ -388,19 +483,30 @@
       return;
     }
 
-    if (action === "removeProvider") {
-      const idx = Number(btn.getAttribute("data-idx"));
-      const cfg = gatherConfigFromDom();
-      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
-      if (Number.isFinite(idx) && idx >= 0 && idx < cfg.providers.length) cfg.providers.splice(idx, 1);
-      setUiState({ cfg, status: "Provider removed (pending save).", dirty: true }, { preserveEdits: false });
-      return;
-    }
+	    if (action === "removeProvider") {
+	      const idx = Number(btn.getAttribute("data-idx"));
+	      const cfg = gatherConfigFromDom();
+	      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
+	      if (Number.isFinite(idx) && idx >= 0 && idx < cfg.providers.length) cfg.providers.splice(idx, 1);
+	      setUiState({ cfg, status: "Provider removed (pending save).", dirty: true }, { preserveEdits: false });
+	      return;
+	    }
 
-    if (action === "clearProviderKey") {
-      const idx = Number(btn.getAttribute("data-idx"));
-      const cfg = gatherConfigFromDom();
-      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
+	    if (action === "makeProviderDefault") {
+	      const idx = Number(btn.getAttribute("data-idx"));
+	      const cfg = gatherConfigFromDom();
+	      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
+	      if (!Number.isFinite(idx) || idx <= 0 || idx >= cfg.providers.length) return setUiState({ status: "Make Default: provider index invalid." }, { preserveEdits: true });
+	      const [picked] = cfg.providers.splice(idx, 1);
+	      cfg.providers.unshift(picked);
+	      setUiState({ cfg, status: "Default provider updated (providers[0], pending save).", dirty: true }, { preserveEdits: false });
+	      return;
+	    }
+
+	    if (action === "clearProviderKey") {
+	      const idx = Number(btn.getAttribute("data-idx"));
+	      const cfg = gatherConfigFromDom();
+	      cfg.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
       if (cfg.providers[idx]) cfg.providers[idx].apiKey = "";
       setUiState({ cfg, status: "Provider apiKey cleared (pending save).", dirty: true }, { preserveEdits: false });
       return;
@@ -415,28 +521,38 @@
       return setUiState({ status: "Clearing history summary cache..." }, { preserveEdits: true });
     }
     if (action === "reset") return setUiState({ modal: { kind: "confirmReset" } }, { preserveEdits: true });
-    if (action === "reload") {
-      vscode.postMessage({ type: "reload" });
-      return setUiState({ status: "Reloading..." }, { preserveEdits: true });
-    }
-    if (action === "toggleRuntime") {
-      const enabled = Boolean(uiState?.summary?.runtimeEnabled);
-      vscode.postMessage({ type: enabled ? "disableRuntime" : "enableRuntime" });
-      return setUiState({ status: enabled ? "Disabling runtime..." : "Enabling runtime..." }, { preserveEdits: true });
-    }
+	    if (action === "reload") {
+	      vscode.postMessage({ type: "reload" });
+	      return setUiState({ status: "Reloading..." }, { preserveEdits: true });
+	    }
+	    if (action === "reloadWindow") {
+	      vscode.postMessage({ type: "reloadWindow" });
+	      return setUiState({ status: "Reload Window requested..." }, { preserveEdits: true });
+	    }
+	    if (action === "toggleRuntime") {
+	      const enabled = Boolean(uiState?.summary?.runtimeEnabled);
+	      vscode.postMessage({ type: enabled ? "disableRuntime" : "enableRuntime" });
+	      return setUiState({ status: enabled ? "Disabling runtime..." : "Enabling runtime..." }, { preserveEdits: true });
+	    }
     if (action === "toggleSide") return setUiState({ sideCollapsed: !uiState.sideCollapsed }, { preserveEdits: true });
     if (action === "disableRuntime") return vscode.postMessage({ type: "disableRuntime" });
     if (action === "enableRuntime") return vscode.postMessage({ type: "enableRuntime" });
   });
 
-  document.addEventListener("change", (ev) => {
-    const el = ev.target;
-    if (!el || typeof el.matches !== "function") return;
+	  document.addEventListener("change", (ev) => {
+	    const el = ev.target;
+	    if (!el || typeof el.matches !== "function") return;
 
-    if (el.matches("[data-rule-ep][data-rule-key]")) {
-      const ep = normalizeStr(el.getAttribute("data-rule-ep"));
-      const key = normalizeStr(el.getAttribute("data-rule-key"));
-      const cfg = gatherConfigFromDom();
+	    if (el.matches("#runtimeEnabledToggle")) {
+	      const enable = Boolean(el.checked);
+	      vscode.postMessage({ type: enable ? "enableRuntime" : "disableRuntime" });
+	      return setUiState({ status: enable ? "Enabling runtime..." : "Disabling runtime..." }, { preserveEdits: true });
+	    }
+
+	    if (el.matches("[data-rule-ep][data-rule-key]")) {
+	      const ep = normalizeStr(el.getAttribute("data-rule-ep"));
+	      const key = normalizeStr(el.getAttribute("data-rule-key"));
+	      const cfg = gatherConfigFromDom();
       cfg.routing = cfg.routing && typeof cfg.routing === "object" ? cfg.routing : {};
       cfg.routing.rules = cfg.routing.rules && typeof cfg.routing.rules === "object" ? cfg.routing.rules : {};
 
@@ -480,19 +596,18 @@
       return setUiState({ cfg, status: `Rule updated: ${ep} (pending save).`, dirty: true }, { preserveEdits: false });
     }
 
-    if (el.matches("[data-p-key=\"type\"],[data-p-key=\"defaultModel\"]")) return setUiState({ status: "Provider updated (pending save).", dirty: true }, { preserveEdits: true });
+	    if (el.matches("[data-p-key=\"type\"],[data-p-key=\"defaultModel\"],[data-p-key=\"thinkingLevel\"]"))
+	      return setUiState({ status: "Provider updated (pending save).", dirty: true }, { preserveEdits: true });
+	    if (el.matches("#historySummaryEnabled,#historySummaryByokModel")) return markDirty("History summary updated (pending save).");
+	  });
 
-    if (el.matches("#defaultProviderId")) return markDirty("Default provider updated (pending save).");
-    if (el.matches("#historySummaryEnabled,#historySummaryByokModel")) return markDirty("History summary updated (pending save).");
-  });
-
-  document.addEventListener("input", (ev) => {
-    const el = ev.target;
-    if (!el || typeof el.matches !== "function") return;
-    if (el.matches("#endpointSearch")) return setEndpointSearch(el.value);
-    if (el.matches("#modalText")) return;
-    if (el.matches("input[type=\"text\"],input[type=\"number\"],input[type=\"password\"],textarea")) return markDirty("Edited (pending save).");
-  });
+	  document.addEventListener("input", (ev) => {
+	    const el = ev.target;
+	    if (!el || typeof el.matches !== "function") return;
+	    if (el.matches("#endpointSearch")) return setEndpointSearch(el.value);
+	    if (el.matches("#modalText")) return;
+	    if (el.matches("input[type=\"text\"],input[type=\"number\"],input[type=\"password\"],input[type=\"url\"],textarea")) return markDirty("Edited (pending save).");
+	  });
 
   function init() {
     try {

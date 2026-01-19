@@ -2,11 +2,15 @@ name: build-release
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
   workflow_dispatch: {}
 
 permissions:
   contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,11 +26,11 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Build VSIX
-        run: node tools/build/build-vsix.js
-
       - name: Upstream analyze
         run: node tools/build/upstream-analyze.js
+
+      - name: Build VSIX
+        run: node tools/build/build-vsix.js
 
       - name: Endpoint coverage (LLM fail-fast)
         run: node tools/report/endpoint-coverage.js --analysis .cache/reports/upstream-analysis.json --out dist/endpoint-coverage.report.md --fail-fast
@@ -44,9 +48,11 @@ jobs:
             .cache/reports/upstream-analysis.json
 
       - name: Prepare Rolling Release Assets
+        if: github.ref_name == github.event.repository.default_branch
         run: cp dist/upstream.lock.json dist.upstream.lock.json
 
       - name: Publish Rolling Release
+        if: github.ref_name == github.event.repository.default_branch
         uses: ncipollo/release-action@v1
         with:
           tag: rolling
