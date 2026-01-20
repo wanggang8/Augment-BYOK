@@ -23,14 +23,15 @@
   "anthropic-dangerous-direct-browser-access": "true", // 可选，仅在启用相关模式时
   "x-api-key": "your-api-key",
   "x-app": "cli",
-  "user-agent": "claude-cli/2.1.12 (external, claude-vscode, agent-sdk/0.2.11)",
+  "user-agent": "claude-cli/2.1.2 (external, cli)",
   "x-stainless-arch": "arm64",
+  "x-stainless-helper-method": "stream", // 可选，仅在 stream 请求时
   "x-stainless-lang": "js",
   "x-stainless-os": "MacOS",
   "x-stainless-package-version": "0.70.0",
   "x-stainless-retry-count": "0",
   "x-stainless-runtime": "node",
-  "x-stainless-runtime-version": "20.0.0",
+  "x-stainless-runtime-version": "v24.3.0",
   "x-stainless-timeout": "600",
   "connection": "keep-alive",
   "accept-encoding": "gzip, deflate, br, zstd",
@@ -44,9 +45,8 @@
 - CLI 包含多个 `x-stainless-*` 头（由 SDK 注入，版本/运行时可能变化）
 - CLI 包含 `x-app: cli` 标识
 - CLI 的 `x-stainless-runtime-version` **保留** 'v' 前缀（如 `v24.3.0`）
-- CLI 的 `user-agent` 必须包含 `agent-sdk` 版本（如 `agent-sdk/0.2.11`）
+- CLI **可能**包含 `x-stainless-helper-method: stream`（仅在 stream 请求时）
 - CLI 包含 `connection: keep-alive` 和 `accept-encoding: gzip, deflate, br, zstd`
-- **注意**：`x-stainless-helper-method` 已从实现中移除（非必需）
 
 ### Header 模拟模式（本项目）
 - `requestDefaults.cliHeadersMode = "strict" | "minimal"`
@@ -85,7 +85,7 @@ system: "Your custom system prompt"
 system: [
   {
     type: "text",
-    text: "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
+    text: "You are Claude Code, Anthropic's official CLI for Claude.",
     cache_control: { type: "ephemeral" }
   },
   {
@@ -97,7 +97,7 @@ system: [
 
 **关键差异：**
 - CLI 强制使用数组格式
-- CLI 强制在开头添加 "You are Claude Code..." 身份声明，并包含 "running within the Claude Agent SDK"
+- CLI 强制在开头添加 "You are Claude Code, Anthropic's official CLI for Claude." 身份声明
 - CLI 的第一个 system block 包含 `cache_control: { type: "ephemeral" }`
 - 用户的 system prompt 会追加在 CLI 身份声明之后（不带换行符前缀）
 
@@ -246,7 +246,5 @@ if (body.tools.length) {
 7. **危险头**：`anthropic-dangerous-direct-browser-access` 仅在显式启用相关模式时才会出现
 8. **关键修复**（2026-01-20）：
    - `buildClaudeCodeBetas()` 现在确保 `claude-code-20250219` 始终是第一个 beta（使用数组初始化而非 `add()` 添加）
-   - 移除了非必需的 `x-stainless-helper-method` header
-   - System prompt 已正确包含 "running within the Claude Agent SDK" 完整描述
-   - `x-stainless-runtime-version` 保留 'v' 前缀（不移除）
-   - `user-agent` 必须包含 `agent-sdk` 版本信息
+   - System prompt 使用正确的 CLI 身份声明（"You are Claude Code, Anthropic's official CLI for Claude."）
+   - `x-stainless-runtime-version` 保留 'v' 前缀（如 `v24.3.0`）
