@@ -23,8 +23,13 @@ const {
 
 const CLAUDE_CLI_VERSION = "2.1.2";
 const CLAUDE_USER_ID_KEY = "augment-byok.claudeCodeUserId.v1";
-// 生成进程级别的 session_id（每次启动生成一次）
-const SESSION_ID = crypto.randomBytes(16).toString("hex");
+// 生成进程级别的 session_id（每次启动生成一次，UUID 格式）
+function generateSessionId() {
+  const bytes = crypto.randomBytes(16);
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
+}
+const SESSION_ID = generateSessionId();
 let cachedUserId = "";
 
 function getStableUserId() {
@@ -46,16 +51,6 @@ function normalizeAccountUuid(requestDefaults) {
   const md = requestDefaults && typeof requestDefaults === "object" ? requestDefaults.metadata : null;
   const raw = md?.account_uuid ?? md?.accountUuid ?? requestDefaults?.accountUuid ?? requestDefaults?.account_uuid;
   return typeof raw === "string" ? raw.trim() : "";
-}
-
-function normalizeToolInputJson(value) {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object") {
-    try {
-      return JSON.stringify(value);
-    } catch {}
-  }
-  return "";
 }
 
 function pickMaxTokens(requestDefaults) {
@@ -152,14 +147,22 @@ function buildClaudeCodeRequest({ baseUrl, apiKey, model, system, messages, tool
   const cliSystem = [
     {
       type: "text",
-      text: "You are Claude Code, Anthropic's official CLI for Claude."
+      text: "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
+      cache_control: { type: "ephemeral" }
     }
   ];
   if (system) {
     if (typeof system === "string" && system.trim()) {
-      cliSystem.push({ type: "text", text: system.trim() });
+      cliSystem.push({ 
+        type: "text", 
+        text: system.trim(),
+        cache_control: { type: "ephemeral" }
+      });
     } else if (Array.isArray(system)) {
-      cliSystem.push(...system);
+      cliSystem.push(...system.map(item => ({
+        ...item,
+        cache_control: { type: "ephemeral" }
+      })));
     }
   }
 
