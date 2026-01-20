@@ -56,13 +56,12 @@ function normalizeAccountUuid(requestDefaults) {
 function pickMaxTokens(requestDefaults) {
   const v = requestDefaults && typeof requestDefaults === "object" ? requestDefaults.max_tokens ?? requestDefaults.maxTokens : undefined;
   const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : 1024;
+  return Number.isFinite(n) && n > 0 ? n : 32000;
 }
 
 function getClaudeCliUserAgent() {
-  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT || "claude-vscode";
-  const sdkVersion = process.env.CLAUDE_AGENT_SDK_VERSION || "0.2.11";
-  return `claude-cli/${CLAUDE_CLI_VERSION} (external, ${entrypoint}, agent-sdk/${sdkVersion})`;
+  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT || "cli";
+  return `claude-cli/${CLAUDE_CLI_VERSION} (external, ${entrypoint})`;
 }
 
 function normalizeBetaList(list) {
@@ -112,7 +111,7 @@ function normalizeCliHeaderMode(requestDefaults) {
   return mode === "minimal" ? "minimal" : "strict";
 }
 
-function claudeCodeHeaders(key, extraHeaders, betas, dangerouslyAllowBrowser, headerMode) {
+function claudeCodeHeaders(key, extraHeaders, betas, dangerouslyAllowBrowser, headerMode, stream) {
   const baseHeaders = {
     "anthropic-beta": Array.isArray(betas) && betas.length ? betas.join(",") : "interleaved-thinking-2025-05-14"
   };
@@ -125,11 +124,12 @@ function claudeCodeHeaders(key, extraHeaders, betas, dangerouslyAllowBrowser, he
     "x-stainless-package-version": "0.70.0",
     "x-stainless-retry-count": "0",
     "x-stainless-runtime": "node",
-    "x-stainless-runtime-version": process.version,
+    "x-stainless-runtime-version": "v24.3.0",
     "x-stainless-timeout": "600",
     "connection": "keep-alive",
     "accept-encoding": "gzip, deflate, br, zstd"
   } : {};
+  if (stream) cliHeaders["x-stainless-helper-method"] = "stream";
   if (dangerouslyAllowBrowser) cliHeaders["anthropic-dangerous-direct-browser-access"] = "true";
   const extra = extraHeaders && typeof extraHeaders === "object" ? extraHeaders : {};
   return { ...baseHeaders, ...cliHeaders, ...(key ? { "x-api-key": key } : {}), ...extra, "anthropic-version": "2023-06-01" };
@@ -147,7 +147,7 @@ function buildClaudeCodeRequest({ baseUrl, apiKey, model, system, messages, tool
   const cliSystem = [
     {
       type: "text",
-      text: "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
+      text: "You are Claude Code, Anthropic's official CLI for Claude.",
       cache_control: { type: "ephemeral" }
     }
   ];
@@ -155,14 +155,10 @@ function buildClaudeCodeRequest({ baseUrl, apiKey, model, system, messages, tool
     if (typeof system === "string" && system.trim()) {
       cliSystem.push({ 
         type: "text", 
-        text: system.trim(),
-        cache_control: { type: "ephemeral" }
+        text: system.trim()
       });
     } else if (Array.isArray(system)) {
-      cliSystem.push(...system.map(item => ({
-        ...item,
-        cache_control: { type: "ephemeral" }
-      })));
+      cliSystem.push(...system);
     }
   }
 
@@ -202,15 +198,10 @@ function buildClaudeCodeRequest({ baseUrl, apiKey, model, system, messages, tool
     }
   }
 
-  // tool_choice（如果有 tools）
-  if (toolsArray.length > 0) {
-    body.tool_choice = { type: "auto" };
-  }
-
   const betas = buildClaudeCodeBetas({ model: m, tools: toolsArray, requestDefaults, extraHeaders });
   const dangerouslyAllowBrowser = Boolean(requestDefaults?.dangerouslyAllowBrowser ?? requestDefaults?.dangerously_allow_browser ?? requestDefaults?.dangerous_direct_browser_access);
   const headerMode = normalizeCliHeaderMode(requestDefaults);
-  const headers = withJsonContentType(claudeCodeHeaders(key, extraHeaders, betas, dangerouslyAllowBrowser, headerMode));
+  const headers = withJsonContentType(claudeCodeHeaders(key, extraHeaders, betas, dangerouslyAllowBrowser, headerMode, stream));
   if (stream) headers.accept = "application/json";
   return { url, headers, body };
 }
