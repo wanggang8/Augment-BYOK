@@ -240,15 +240,133 @@
     return lines.join("");
   };
 
-  ns.renderApp = function renderApp({ cfg, summary, status, modal, dirty, sideCollapsed, endpointSearch, selfTest, officialTest, providerExpanded }) {
+  function computeOfficialTestUi(officialTest) {
+    const ot = officialTest && typeof officialTest === "object" ? officialTest : {};
+    const running = ot.running === true;
+    const ok = ot.ok === true ? true : ot.ok === false ? false : null;
+    const text = normalizeStr(ot.text);
+    const textShort = text.length > 140 ? text.slice(0, 140) + "…" : text;
+    const badgeHtml = running
+      ? `<span class="status-badge status-badge--warning">testing</span>`
+      : ok === true
+        ? `<span class="status-badge status-badge--success">ok</span>`
+        : ok === false
+          ? `<span class="status-badge status-badge--error">failed</span>`
+          : "";
+    const textHtml = textShort
+      ? `<span class="text-muted text-mono text-xs inline-ellipsis"${text !== textShort ? ` title="${escapeHtml(text)}"` : ""}>${escapeHtml(textShort)}</span>`
+      : "";
+    return { running, ok, text, textShort, badgeHtml, textHtml };
+  }
+
+  function summarizeSelfTestReportHtml(stReport) {
+    if (!stReport) return "";
+    const ps = Array.isArray(stReport.providers) ? stReport.providers : [];
+    const total = ps.length;
+    const failed = ps.filter((p) => p && p.ok === false).length;
+    const globals = stReport.global && typeof stReport.global === "object" ? stReport.global : {};
+    const gTests = Array.isArray(globals.tests) ? globals.tests : [];
+    const gFailed = gTests.filter((x) => x && x.ok === false).length;
+    const captured = globals.capturedTools && typeof globals.capturedTools === "object" ? globals.capturedTools : null;
+    const capturedCount = Number.isFinite(Number(captured?.count)) ? Number(captured.count) : 0;
+    const capturedSource = normalizeStr(captured?.source);
+    const toolExec = globals.toolExec && typeof globals.toolExec === "object" ? globals.toolExec : null;
+    const toolExecBadge =
+      toolExec && toolExec.ok === true ? `<span class="badge">ok</span>` : toolExec && toolExec.ok === false ? `<span class="badge">failed</span>` : "";
+    const failedTools = toolExec && Array.isArray(toolExec.failedTools) ? toolExec.failedTools : [];
+    const failedToolsText = failedTools.length ? `${failedTools.join(",")}${toolExec && toolExec.failedToolsTruncated ? ",…" : ""}` : "";
+    const badge = stReport.ok === true ? `<span class="badge">ok</span>` : `<span class="badge">failed</span>`;
+    return (
+      `<div class="small">result: ${badge} providers_failed=${failed}/${total} global_failed=${gFailed}/${gTests.length}</div>` +
+      `<div class="small">captured_tools: <span class="badge">${capturedCount}</span>${capturedSource ? ` <span class="text-muted text-xs">(${escapeHtml(capturedSource)})</span>` : ""}</div>` +
+      (toolExec ? `<div class="small">toolsExec: ${toolExecBadge} ${escapeHtml(String(toolExec.detail || ""))}</div>` : "") +
+      (failedToolsText ? `<div class="small mono">failed_tools: ${escapeHtml(failedToolsText)}</div>` : "")
+    );
+  }
+
+  function computeThinkingUi({ type, requestDefaults }) {
+    const rd = requestDefaults && typeof requestDefaults === "object" && !Array.isArray(requestDefaults) ? requestDefaults : {};
+
+    if (type === "openai_responses") {
+      const reasoning = rd.reasoning && typeof rd.reasoning === "object" && !Array.isArray(rd.reasoning) ? rd.reasoning : {};
+      const raw = normalizeStr(reasoning.effort);
+      const rawNorm = raw.replace(/[\s-]+/g, "_");
+      const v =
+        rawNorm === "xhigh"
+          ? "xhigh"
+          : rawNorm === "low" || rawNorm === "medium" || rawNorm === "high"
+            ? rawNorm
+            : rawNorm
+              ? "custom"
+              : "";
+      const hint =
+        v === "xhigh" ? "OpenAI Responses：reasoning.effort=xhigh" : "OpenAI Responses：reasoning.effort=low|medium|high|xhigh";
+      return { supported: true, value: v, hint };
+    }
+
+    if (type === "anthropic") {
+      const thinking = rd.thinking && typeof rd.thinking === "object" && !Array.isArray(rd.thinking) ? rd.thinking : null;
+      const tType = normalizeStr(thinking && thinking.type);
+      const btRaw = thinking ? (thinking.budget_tokens ?? thinking.budgetTokens) : undefined;
+      const bt = Number(btRaw);
+      let v = "";
+      if (thinking) {
+        if (tType !== "enabled") v = "custom";
+        else if (bt === 1024) v = "low";
+        else if (bt === 2048) v = "medium";
+        else if (bt === 4096) v = "high";
+        else if (bt === 8192) v = "xhigh";
+        else v = "custom";
+      }
+      return { supported: true, value: v, hint: "Anthropic：写入 requestDefaults.thinking.budget_tokens（Low/Medium/High/xhigh）" };
+    }
+
+    return { supported: false, value: "", hint: "该类型不支持（可用 Defaults JSON 自定义）" };
+  }
+
+  ns.renderApp = function renderApp({ cfg, summary, status, modal, dirty, sideCollapsed, endpointSearch, selfTest, selfTestProviderKeys, officialTest, providerExpanded }) {
     const c = cfg && typeof cfg === "object" ? cfg : {};
     const s = summary && typeof summary === "object" ? summary : {};
     const off = c.official && typeof c.official === "object" ? c.official : {};
     const routing = c.routing && typeof c.routing === "object" ? c.routing : {};
     const endpointSearchText = normalizeStr(endpointSearch);
 
+    const st = selfTest && typeof selfTest === "object" ? selfTest : {};
+    const stRunning = st.running === true;
+    const stLogs = Array.isArray(st.logs) ? st.logs : [];
+    const stReport = st.report && typeof st.report === "object" ? st.report : null;
+
     const providers = Array.isArray(c.providers) ? c.providers : [];
     const providerIds = providers.map((p) => normalizeStr(p?.id)).filter(Boolean);
+    const providerKeyByIndex = (p, idx) => normalizeStr(p?.id) || `idx:${idx}`;
+    const stProviderKeysRaw = Array.isArray(selfTestProviderKeys) ? selfTestProviderKeys : [];
+    const stProviderKeysConfigured = uniq(stProviderKeysRaw.map((k) => normalizeStr(k)).filter(Boolean));
+    const availableProviderKeys = providers.map((p, idx) => providerKeyByIndex(p, idx)).filter(Boolean);
+    const availableProviderKeySet = new Set(availableProviderKeys);
+    const stProviderKeys = stProviderKeysConfigured.filter((k) => availableProviderKeySet.has(k));
+    const stProviderKeySet = new Set(stProviderKeys);
+    const selfTestProvidersHtml = providers.length
+      ? providers
+          .map((p, idx) => {
+            const pid = normalizeStr(p?.id);
+            const type = normalizeStr(p?.type);
+            const pKey = providerKeyByIndex(p, idx);
+            const title = pid || `provider_${idx + 1}`;
+            const checked = stProviderKeySet.has(pKey);
+            const disabled = stRunning ? "disabled" : "";
+            return `
+              <label class="selftest-provider-item${checked ? " is-checked" : ""}" title="${escapeHtml(type || pKey)}">
+                <input class="selftest-provider-checkbox" type="checkbox" data-selftest-provider-key="${escapeHtml(pKey)}" ${checked ? "checked" : ""} ${disabled} />
+                <span class="selftest-provider-checkbox-ui" aria-hidden="true"></span>
+                <span class="selftest-provider-label">
+                  <span class="text-mono">${escapeHtml(title)}</span>
+                  ${type ? `<span class="text-muted text-xs">(${escapeHtml(type)})</span>` : ""}
+                </span>
+              </label>
+            `;
+          })
+          .join("")
+      : `<div class="text-muted text-xs">(no providers configured)</div>`;
 
     const rulesObj = routing.rules && typeof routing.rules === "object" ? routing.rules : {};
     const ruleEndpoints = Object.keys(rulesObj).sort();
@@ -260,49 +378,12 @@
     const isSideCollapsed = sideCollapsed === true;
     const runtimeEnabled = s.runtimeEnabled === true;
 
-    const st = selfTest && typeof selfTest === "object" ? selfTest : {};
-    const stRunning = st.running === true;
-    const stLogs = Array.isArray(st.logs) ? st.logs : [];
-    const stReport = st.report && typeof st.report === "object" ? st.report : null;
+    const otUi = computeOfficialTestUi(officialTest);
+    const otRunning = otUi.running;
+    const otBadge = otUi.badgeHtml;
+    const otTextHtml = otUi.textHtml;
 
-	    const ot = officialTest && typeof officialTest === "object" ? officialTest : {};
-	    const otRunning = ot.running === true;
-	    const otOk = ot.ok === true ? true : ot.ok === false ? false : null;
-	    const otText = normalizeStr(ot.text);
-	    const otTextShort = otText.length > 140 ? otText.slice(0, 140) + "…" : otText;
-	    const otBadge = otRunning
-	      ? `<span class="status-badge status-badge--warning">testing</span>`
-	      : otOk === true
-	        ? `<span class="status-badge status-badge--success">ok</span>`
-	        : otOk === false
-	          ? `<span class="status-badge status-badge--error">failed</span>`
-	          : "";
-	    const otTextHtml = otTextShort
-	      ? `<span class="text-muted text-mono text-xs inline-ellipsis"${otText !== otTextShort ? ` title="${escapeHtml(otText)}"` : ""}>${escapeHtml(otTextShort)}</span>`
-	      : "";
-
-    const summarizeSelfTestReport = () => {
-      if (!stReport) return "";
-      const ps = Array.isArray(stReport.providers) ? stReport.providers : [];
-      const total = ps.length;
-      const failed = ps.filter((p) => p && p.ok === false).length;
-      const globals = stReport.global && typeof stReport.global === "object" ? stReport.global : {};
-      const gTests = Array.isArray(globals.tests) ? globals.tests : [];
-      const gFailed = gTests.filter((x) => x && x.ok === false).length;
-      const toolExec = globals.toolExec && typeof globals.toolExec === "object" ? globals.toolExec : null;
-      const toolExecBadge =
-        toolExec && toolExec.ok === true ? `<span class="badge">ok</span>` : toolExec && toolExec.ok === false ? `<span class="badge">failed</span>` : "";
-      const failedTools = toolExec && Array.isArray(toolExec.failedTools) ? toolExec.failedTools : [];
-      const failedToolsText = failedTools.length ? `${failedTools.join(",")}${toolExec && toolExec.failedToolsTruncated ? ",…" : ""}` : "";
-      const badge = stReport.ok === true ? `<span class="badge">ok</span>` : `<span class="badge">failed</span>`;
-      return (
-        `<div class="small">result: ${badge} providers_failed=${failed}/${total} global_failed=${gFailed}/${gTests.length}</div>` +
-        (toolExec
-          ? `<div class="small">toolsExec: ${toolExecBadge} ${escapeHtml(String(toolExec.detail || ""))}</div>`
-          : "") +
-        (failedToolsText ? `<div class="small mono">failed_tools: ${escapeHtml(failedToolsText)}</div>` : "")
-      );
-    };
+    const summarizeSelfTestReport = () => summarizeSelfTestReportHtml(stReport);
 
 	    const selfTestHtml = `
 	      <section class="settings-panel">
@@ -319,8 +400,25 @@
 	        </header>
 	        <div class="settings-panel__body">
 	          <div class="text-muted text-xs">覆盖：models / 非流式 / 流式 / chat-stream / 真实工具集(schema+tool_use 往返) / 真实工具执行(toolsModel.callTool 全覆盖) / 多模态 / 上下文压缩(historySummary) / 缓存命中。</div>
-	          ${summarizeSelfTestReport()}
-	          <textarea class="mono" id="selfTestLog" readonly style="min-height:160px;">${escapeHtml(stLogs.join("\n"))}</textarea>
+	          <div class="selftest-grid">
+	            <div class="selftest-controls">
+	              <div class="form-group">
+	                <label class="form-label">Providers（可多选）</label>
+	                <div class="selftest-provider-list" role="group" aria-label="Self Test Providers">${selfTestProvidersHtml}</div>
+	                <div class="text-muted text-xs">提示：不选=全部。</div>
+	              </div>
+	              <div class="flex-row flex-wrap row tight">
+	                <button class="btn btn--small" data-action="selfTestSelectAllProviders" ${stRunning || !providers.length ? "disabled" : ""}>全选</button>
+	                <button class="btn btn--small" data-action="selfTestClearSelectedProviders" ${stRunning ? "disabled" : ""}>清空</button>
+	                <span class="text-muted text-xs">${escapeHtml(stProviderKeys.length ? `selected=${stProviderKeys.length}` : `selected=all (${providers.length})`)}</span>
+	              </div>
+	              ${summarizeSelfTestReport()}
+	            </div>
+	            <div class="selftest-log">
+	              <label class="form-label">Logs</label>
+	              <textarea class="mono" id="selfTestLog" readonly>${escapeHtml(stLogs.join("\n"))}</textarea>
+	            </div>
+	          </div>
 	        </div>
 	      </section>
 	    `;
@@ -413,48 +511,7 @@
 	          const models = uniq(rawModels.filter((m) => normalizeStr(m)));
 	          const modelOptions = uniq(models.concat(dm ? [dm] : []));
 	          const requestDefaults = p?.requestDefaults && typeof p.requestDefaults === "object" && !Array.isArray(p.requestDefaults) ? p.requestDefaults : {};
-	          const thinkingUi = (() => {
-	            if (type === "openai_responses") {
-	              const uiThinkingLevel = normalizeStr(requestDefaults.__byok_thinking_level);
-	              const reasoning =
-	                requestDefaults.reasoning && typeof requestDefaults.reasoning === "object" && !Array.isArray(requestDefaults.reasoning) ? requestDefaults.reasoning : {};
-	              const raw = normalizeStr(reasoning.effort);
-	              const rawNorm = raw.replace(/[\s-]+/g, "_");
-	              const v =
-	                rawNorm === "extra_high"
-	                  ? "extra"
-	                  : rawNorm === "high" && uiThinkingLevel === "extra"
-	                  ? "extra"
-	                  : rawNorm === "low" || rawNorm === "medium" || rawNorm === "high"
-	                    ? rawNorm
-	                    : rawNorm
-	                      ? "custom"
-	                      : "";
-	              const hint =
-	                v === "extra"
-	                  ? "OpenAI Responses：reasoning.effort=extra_high（注意：Extra high 可能更快消耗速率/额度）"
-	                  : "OpenAI Responses：reasoning.effort=low|medium|high|extra_high";
-	              return { supported: true, value: v, hint };
-	            }
-	            if (type === "anthropic") {
-	              const thinking =
-	                requestDefaults.thinking && typeof requestDefaults.thinking === "object" && !Array.isArray(requestDefaults.thinking) ? requestDefaults.thinking : null;
-	              const tType = normalizeStr(thinking && thinking.type);
-	              const btRaw = thinking ? (thinking.budget_tokens ?? thinking.budgetTokens) : undefined;
-	              const bt = Number(btRaw);
-	              let v = "";
-	              if (thinking) {
-	                if (tType !== "enabled") v = "custom";
-	                else if (bt === 1024) v = "low";
-	                else if (bt === 2048) v = "medium";
-	                else if (bt === 4096) v = "high";
-	                else if (bt === 8192) v = "extra";
-	                else v = "custom";
-	              }
-	              return { supported: true, value: v, hint: "Anthropic：写入 requestDefaults.thinking.budget_tokens（Low/Medium/High/Extra high）" };
-	            }
-	            return { supported: false, value: "", hint: "该类型不支持（可用 Defaults JSON 自定义）" };
-	          })();
+	          const thinkingUi = computeThinkingUi({ type, requestDefaults });
 
 		          const providerTitle = pid || `provider_${idx + 1}`;
 		          const isExpanded = pKey in expanded ? expanded[pKey] === true : idx === 0;
@@ -535,7 +592,7 @@
 	                          ${optionHtml({ value: "low", label: "Low", selected: thinkingUi.value === "low" })}
 	                          ${optionHtml({ value: "medium", label: "Medium", selected: thinkingUi.value === "medium" })}
 	                          ${optionHtml({ value: "high", label: "High", selected: thinkingUi.value === "high" })}
-	                          ${optionHtml({ value: "extra", label: "Extra high", selected: thinkingUi.value === "extra" })}
+	                          ${optionHtml({ value: "xhigh", label: "xhigh", selected: thinkingUi.value === "xhigh" })}
 	                          ${thinkingUi.value === "custom" ? optionHtml({ value: "custom", label: "(Custom / keep)", selected: true }) : ""}
 	                        </select>
 	                        <div class="text-muted text-xs">${escapeHtml(thinkingUi.hint)}</div>

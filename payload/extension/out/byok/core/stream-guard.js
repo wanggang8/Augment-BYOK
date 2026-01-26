@@ -15,7 +15,7 @@ function makeEndpointErrorText(ep, err) {
   return `❌ ${label} 失败: ${m}`.trim();
 }
 
-async function* guardObjectStream({ ep, src, transform, makeErrorChunk }) {
+async function* guardObjectStream({ ep, src, transform, makeErrorChunk, logMeta }) {
   try {
     for await (const raw of src) {
       const transformed = safeTransform(transform, raw, ep);
@@ -23,7 +23,8 @@ async function* guardObjectStream({ ep, src, transform, makeErrorChunk }) {
     }
   } catch (err) {
     if (isTransformFailure(err)) throw err;
-    warn(makeEndpointErrorText(ep, err));
+    if (logMeta && typeof logMeta === "object") warn(makeEndpointErrorText(ep, err), logMeta);
+    else warn(makeEndpointErrorText(ep, err));
     const fallback = typeof makeErrorChunk === "function" ? makeErrorChunk(err) : null;
     if (fallback != null) yield safeTransform(transform, fallback, ep);
   }

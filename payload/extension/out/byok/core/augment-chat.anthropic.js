@@ -47,6 +47,7 @@ function buildAnthropicToolResultContent(fallbackText, contentNodes) {
 }
 
 function buildAnthropicUserContentBlocks(message, nodes, includeToolResults) {
+  const toolResultBlocks = [];
   const blocks = [];
   let lastText = null;
   const pushText = (text) => {
@@ -68,7 +69,12 @@ function buildAnthropicUserContentBlocks(message, nodes, includeToolResults) {
       const tr = shared.asRecord(shared.pick(r, ["tool_result_node", "toolResultNode"]));
       const toolUseId = normalizeString(shared.pick(tr, ["tool_use_id", "toolUseId"]));
       if (!toolUseId) continue;
-      blocks.push({ type: "tool_result", tool_use_id: toolUseId, content: buildAnthropicToolResultContent(shared.pick(tr, ["content"]), shared.pick(tr, ["content_nodes", "contentNodes"])), is_error: Boolean(shared.pick(tr, ["is_error", "isError"])) });
+      toolResultBlocks.push({
+        type: "tool_result",
+        tool_use_id: toolUseId,
+        content: buildAnthropicToolResultContent(shared.pick(tr, ["content"]), shared.pick(tr, ["content_nodes", "contentNodes"])),
+        is_error: Boolean(shared.pick(tr, ["is_error", "isError"]))
+      });
       lastText = null;
     } else if (t === REQUEST_NODE_IMAGE) {
       const img = shared.asRecord(shared.pick(r, ["image_node", "imageNode"]));
@@ -85,6 +91,7 @@ function buildAnthropicUserContentBlocks(message, nodes, includeToolResults) {
     else if (t === REQUEST_NODE_FILE_ID) pushText(shared.formatFileIdForPrompt(shared.pick(r, ["file_id_node", "fileIdNode"])));
     else if (t === REQUEST_NODE_HISTORY_SUMMARY) pushText(shared.formatHistorySummaryForPrompt(shared.pick(r, ["history_summary_node", "historySummaryNode"])));
   }
+  if (toolResultBlocks.length) return [...toolResultBlocks, ...blocks];
   return blocks;
 }
 

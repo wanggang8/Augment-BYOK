@@ -124,6 +124,113 @@ body {
   padding: var(--spacing-md);
 }
 
+.selftest-grid {
+  margin-top: var(--spacing-sm);
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) 1fr;
+  gap: var(--spacing-md);
+  align-items: start;
+}
+
+.selftest-provider-list {
+  background: var(--bg-input);
+  border: 1px solid var(--vscode-input-border, var(--vscode-dropdown-border, var(--color-border)));
+  border-radius: var(--radius-base);
+  padding: var(--spacing-xs);
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 2px;
+}
+
+.selftest-provider-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-base);
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+
+.selftest-provider-item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(0, 0, 0, 0.06));
+}
+
+.selftest-provider-item.is-checked {
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(0, 0, 0, 0.08));
+}
+
+.selftest-provider-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.selftest-provider-checkbox-ui {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--color-border)));
+  background: var(--vscode-checkbox-background, var(--bg-input));
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selftest-provider-checkbox:focus-visible + .selftest-provider-checkbox-ui {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.selftest-provider-checkbox:checked + .selftest-provider-checkbox-ui::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  border-bottom: 2px solid var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  transform: rotate(-45deg);
+  margin-top: -1px;
+}
+
+.selftest-provider-checkbox:disabled + .selftest-provider-checkbox-ui {
+  opacity: 0.6;
+}
+
+.selftest-provider-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.selftest-controls,
+.selftest-log {
+  min-width: 0;
+}
+
+.selftest-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selftest-log textarea {
+  min-height: 220px;
+}
+
+@media (max-width: 900px) {
+  .selftest-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .card {
   background-color: var(--vscode-editorWidget-background);
   border: 1px solid var(--color-border);
