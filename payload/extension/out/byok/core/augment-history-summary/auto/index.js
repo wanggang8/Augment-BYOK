@@ -25,6 +25,23 @@ function nowMs() {
   return Date.now();
 }
 
+function buildPrevSummaryExchange(summaryText) {
+  return {
+    request_id: "byok_history_summary_prev",
+    request_message: `[PREVIOUS_SUMMARY]\n${asString(summaryText).trim()}\n[/PREVIOUS_SUMMARY]`,
+    response_text: "",
+    request_nodes: [],
+    structured_request_nodes: [],
+    nodes: [],
+    response_nodes: [],
+    structured_output_nodes: []
+  };
+}
+
+function buildRollingUpdatePrompt(hsPrompt) {
+  return `${normalizeString(hsPrompt)}\n\nYou will be given an existing summary and additional conversation turns. The new turns may overlap with information already included in the summary, and the history may be incomplete due to truncation. Update the summary to include any NEW information, avoid duplication, and prefer the latest state when conflicts exist. Output only the updated summary.`;
+}
+
 function hasHistorySummaryNode(nodes) {
   return asArray(nodes).some(
     (n) =>
@@ -48,8 +65,9 @@ function requestContainsSummary(req) {
 
 function computeTriggerDecision({ hs, requestedModel, totalWithExtra, convId }) {
   const triggerOnHistorySizeChars = Number(hs.triggerOnHistorySizeChars);
-  const baseDecision = { thresholdChars: triggerOnHistorySizeChars, tailExcludeChars: hs.historyTailSizeCharsToExclude };
+  const baseDecision = { kind: "chars", thresholdChars: triggerOnHistorySizeChars, tailExcludeChars: hs.historyTailSizeCharsToExclude };
   const strategy = normalizeString(hs.triggerStrategy).toLowerCase();
+
   if (strategy === "chars") return totalWithExtra >= triggerOnHistorySizeChars ? baseDecision : null;
 
   const cwTokensRaw = resolveContextWindowTokens(hs, requestedModel);
@@ -70,7 +88,7 @@ function computeTriggerDecision({ hs, requestedModel, totalWithExtra, convId }) 
     debug(
       `historySummary trigger ratio: conv=${convId} model=${normalizeString(requestedModel)} tokens≈${approxTotalTokens}/${cwTokens} ratio≈${ratio.toFixed(3)}`
     );
-    return { thresholdChars, tailExcludeChars };
+    return { kind: "ratio", thresholdChars, tailExcludeChars };
   }
 
   return totalWithExtra >= triggerOnHistorySizeChars ? baseDecision : null;
@@ -101,6 +119,7 @@ async function resolveSummaryText({
   let usedRolling = false;
   if (hs.rollingSummary === true) {
     const prev = cacheGetFreshState(convId, now, hs.cacheTtlMs);
+    const rollingPrompt = buildRollingUpdatePrompt(hs.prompt);
     if (
       prev &&
       normalizeString(prev.summarizedUntilRequestId) &&
@@ -112,20 +131,16 @@ async function resolveSummaryText({
       if (prevBoundaryPos >= 0 && prevBoundaryPos < tailStart) {
         const delta = history.slice(prevBoundaryPos, tailStart);
         if (delta.length) {
-          const prevExchange = {
-            request_id: "byok_history_summary_prev",
-            request_message: `[PREVIOUS_SUMMARY]\n${asString(prev.summaryText).trim()}\n[/PREVIOUS_SUMMARY]`,
-            response_text: "",
-            request_nodes: [],
-            structured_request_nodes: [],
-            nodes: [],
-            response_nodes: [],
-            structured_output_nodes: []
-          };
+          const prevExchange = buildPrevSummaryExchange(prev.summaryText);
           inputHistory = [prevExchange, ...delta];
           usedRolling = true;
-          prompt = `${normalizeString(hs.prompt)}\n\nYou will be given an existing summary and additional new conversation turns. Update the summary to include the new information. Output only the updated summary.`;
+          prompt = rollingPrompt;
         }
+      } else if (inputHistory.length) {
+        const prevExchange = buildPrevSummaryExchange(prev.summaryText);
+        inputHistory = [prevExchange, ...inputHistory];
+        usedRolling = true;
+        prompt = rollingPrompt;
       }
     }
   }
@@ -201,38 +216,70 @@ async function maybeSummarizeAndCompactAugmentChatRequest({
   const totalChars = estimateHistorySizeChars(history);
   const totalWithExtra = totalChars + asString(req?.message).length + estimateRequestExtraSizeChars(req);
   const decision = computeTriggerDecision({ hs, requestedModel, totalWithExtra, convId });
-  if (!decision) return false;
 
-  const sel = computeTailSelection({ history, hs, decision });
-  if (!sel) return false;
+  if (decision) {
+    const sel = computeTailSelection({ history, hs, decision });
 
-  const abridged = buildAbridgedHistoryText(history, hs.abridgedHistoryParams, sel.boundaryRequestId);
-  const summary = await resolveSummaryText({
-    hs,
-    cfg,
-    convId,
-    boundaryRequestId: sel.boundaryRequestId,
+    if (sel && sel.droppedHead.length) {
+      const abridged = buildAbridgedHistoryText(history, hs.abridgedHistoryParams, sel.boundaryRequestId);
+      const summary = await resolveSummaryText({
+        hs,
+        cfg,
+        convId,
+        boundaryRequestId: sel.boundaryRequestId,
+        history,
+        tailStart: sel.tailStart,
+        droppedHead: sel.droppedHead,
+        fallbackProvider,
+        fallbackModel,
+        timeoutMs,
+        abortSignal
+      });
+
+      if (summary) {
+        const injected = injectHistorySummaryNodeIntoRequestNodes({
+          hs,
+          req,
+          tail: sel.tail,
+          summaryText: summary.summaryText,
+          summarizationRequestId: summary.summarizationRequestId,
+          abridged
+        });
+        if (injected) {
+          debug(`historySummary injected: conv=${convId} before≈${totalChars} tailStart=${sel.tailStart}`);
+          return true;
+        }
+      }
+    }
+  }
+
+  // 当 Augment 客户端已按轮数裁剪掉历史中的 summary exchange 时，仍然需要用缓存的 summary 补回“早期上下文”，否则会退化为仅剩最近 N 轮。
+  const now = nowMs();
+  const cached = hs.rollingSummary === true ? cacheGetFreshState(convId, now, hs.cacheTtlMs) : null;
+  if (!cached || !normalizeString(cached.summaryText)) return false;
+
+  const sel2 = computeTailSelection({
     history,
-    tailStart: sel.tailStart,
-    droppedHead: sel.droppedHead,
-    fallbackProvider,
-    fallbackModel,
-    timeoutMs,
-    abortSignal
+    hs,
+    decision: { kind: "cached", thresholdChars: 0, tailExcludeChars: hs.historyTailSizeCharsToExclude }
   });
-  if (!summary) return false;
+  const boundaryRequestId2 = normalizeString(sel2?.boundaryRequestId) || normalizeString(history[0]?.request_id) || "";
+  const tail2 = sel2?.tail?.length ? sel2.tail : history;
+  const abridged2 = buildAbridgedHistoryText(history, hs.abridgedHistoryParams, boundaryRequestId2);
+  const summarizationRequestId =
+    normalizeString(cached.summarizationRequestId) || `byok_history_summary_cached_${Number(cached.updatedAtMs) || now}`;
 
-  const injected = injectHistorySummaryNodeIntoRequestNodes({
+  const injected2 = injectHistorySummaryNodeIntoRequestNodes({
     hs,
     req,
-    tail: sel.tail,
-    summaryText: summary.summaryText,
-    summarizationRequestId: summary.summarizationRequestId,
-    abridged
+    tail: tail2,
+    summaryText: cached.summaryText,
+    summarizationRequestId,
+    abridged: abridged2
   });
-  if (!injected) return false;
+  if (!injected2) return false;
 
-  debug(`historySummary injected: conv=${convId} before≈${totalChars} tailStart=${sel.tailStart}`);
+  debug(`historySummary injected from cache: conv=${convId} before≈${totalChars} tailStart=${Number(sel2?.tailStart) || 0}`);
   return true;
 }
 

@@ -20,6 +20,7 @@
 - patch `extension/out/extension.js`：
   - prepend injector：`vendor/augment-interceptor/inject-code.augment-interceptor.v1.2.txt`
   - 注入 bootstrap：`./byok/runtime/bootstrap`
+  - 禁用上游 chatHistory 裁剪（仅 runtimeEnabled=true 时）：patch `ChatModel.limitChatHistory`（避免客户端按轮数/体积先截断）
   - official overrides：`completionURL/apiToken` 改为 `globalState`
   - callApi shim：优先走 `./byok/runtime/shim/call-api`；callApiStream shim：优先走 `./byok/runtime/shim/call-api-stream`（`byok|official|disabled`）
   - guard：`autoAuth=0`、marker 存在、`node --check`、合约检查

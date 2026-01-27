@@ -7,6 +7,7 @@ const { copyDir } = require("./fs");
 const { run } = require("./run");
 
 const { patchAugmentInterceptorInject } = require("../patch/patch-augment-interceptor-inject");
+const { patchDisableChatHistoryTruncation } = require("../patch/patch-disable-chat-history-truncation");
 const { patchExtensionEntry } = require("../patch/patch-extension-entry");
 const { patchOfficialOverrides } = require("../patch/patch-official-overrides");
 const { patchCallApiShim } = require("../patch/patch-callapi-shim");
@@ -50,6 +51,9 @@ function applyByokPatches({ repoRoot, extensionDir, pkgPath, extJsPath, intercep
 
   log(`patch entry bootstrap`);
   patchExtensionEntry(extJs);
+
+  log(`disable upstream chat history truncation when BYOK enabled`);
+  patchDisableChatHistoryTruncation(extJs);
 
   log(`expose upstream internals (toolsModel)`);
   patchExposeUpstream(extJs);

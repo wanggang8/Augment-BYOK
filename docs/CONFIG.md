@@ -64,7 +64,15 @@
 - `historySummary`：历史摘要（自动压缩上下文，避免溢出；仅影响发给上游模型的内容）
   - 面板显式暴露：`enabled` + `byok model` 选择（保存时映射为 `providerId` + `model`）
   - 面板 Advanced：`prompt`（用于生成滚动摘要；保存后对后续摘要生效）
-  - 其它字段：默认/保留（用于更细粒度控制）
+  - 触发策略（Advanced/JSON）
+    - `triggerStrategy`：`auto | ratio | chars`（推荐 `auto`）
+    - `triggerOnContextRatio` / `targetContextRatio`：按模型上下文比例触发与目标（`auto/ratio` 生效）
+    - `triggerOnHistorySizeChars`：纯 chars 兜底阈值（`chars` 生效；`auto` 时也用于上限保护）
+    - `contextWindowTokensDefault` / `contextWindowTokensOverrides`：当模型名无法推断上下文长度时手动指定
+  - Tail 保留（Advanced/JSON）
+    - `historyTailSizeCharsToExclude`：保留末尾多少 chars 的原文进入 `{end_part_full}`
+    - `minTailExchanges`：无论 chars 预算如何，尾部至少保留多少 exchanges（避免“工具结果孤儿”）
+  - 说明：BYOK 在 `runtimeEnabled=true` 时会 patch 上游，禁用 Augment 客户端的 `limitChatHistory` 硬裁剪；因此不再支持按“轮数”触发/保留 tail 的旧字段
 
 ## 鉴权（apiKey / headers）
 

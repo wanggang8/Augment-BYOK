@@ -77,4 +77,3 @@ function computeTailSelection({ history, hs, decision }) {
 }
 
 module.exports = { computeTailSelection };
-
