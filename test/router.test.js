@@ -29,6 +29,40 @@ test("decideRoute: byok (default rule) picks provider/model from byok:model", ()
   assert.equal(r.model, "gpt-4o-mini");
 });
 
+test("decideRoute: accepts model_id (snake_case) from request body", () => {
+  const cfg = defaultConfig();
+  const r = decideRoute({ cfg, endpoint: "/chat-stream", body: { model_id: "byok:openai:gpt-4o" }, runtimeEnabled: true });
+  assert.equal(r.mode, "byok");
+  assert.equal(r.endpoint, "/chat-stream");
+  assert.equal(r.provider.id, "openai");
+  assert.equal(r.model, "gpt-4o");
+});
+
+test("decideRoute: model picker overrides endpoint rule model", () => {
+  const cfg = defaultConfig();
+  cfg.routing.rules["/chat-stream"] = { mode: "byok", providerId: "openai", model: "gpt-4o-mini" };
+  const r = decideRoute({ cfg, endpoint: "/chat-stream", body: { model: "byok:openai:gpt-4o" }, runtimeEnabled: true });
+  assert.equal(r.mode, "byok");
+  assert.equal(r.endpoint, "/chat-stream");
+  assert.equal(r.provider.id, "openai");
+  assert.equal(r.model, "gpt-4o");
+});
+
+test("decideRoute: model picker overrides endpoint rule providerId", () => {
+  const cfg = defaultConfig();
+  cfg.routing.rules["/chat-stream"] = { mode: "byok", providerId: "openai", model: "gpt-4o-mini" };
+  const r = decideRoute({
+    cfg,
+    endpoint: "/chat-stream",
+    body: { model: "byok:anthropic:claude-3-5-sonnet-20241022" },
+    runtimeEnabled: true
+  });
+  assert.equal(r.mode, "byok");
+  assert.equal(r.endpoint, "/chat-stream");
+  assert.equal(r.provider.id, "anthropic");
+  assert.equal(r.model, "claude-3-5-sonnet-20241022");
+});
+
 test("decideRoute: disabled rule => disabled", () => {
   const cfg = defaultConfig();
   const r = decideRoute({ cfg, endpoint: "/user-secrets/list", body: { model: "byok:openai:gpt-4o-mini" }, runtimeEnabled: true });

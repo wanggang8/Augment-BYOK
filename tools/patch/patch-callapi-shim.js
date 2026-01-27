@@ -4,17 +4,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const { ensureMarker } = require("../lib/patch");
+const { ensureMarker, findMatchIndexes } = require("../lib/patch");
 
 const MARKER = "__augment_byok_callapi_shim_patched_v1";
-
-function findMatchIndexes(src, re, label) {
-  const matches = Array.from(src.matchAll(re));
-  if (matches.length === 0) throw new Error(`${label} needle not found (upstream may have changed): matched=0`);
-  const indexes = matches.map((m) => m.index).filter((i) => typeof i === "number" && i >= 0);
-  if (indexes.length !== matches.length) throw new Error(`${label} needle match missing index`);
-  return indexes.sort((a, b) => a - b);
-}
 
 function injectIntoAsyncMethods(src, methodName, injection) {
   const indexes = findMatchIndexes(src, new RegExp(`async\\s+${methodName}\\s*\\(`, "g"), methodName);

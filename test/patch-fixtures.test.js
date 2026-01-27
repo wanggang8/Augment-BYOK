@@ -9,6 +9,7 @@ const { patchAugmentInterceptorInject } = require("../tools/patch/patch-augment-
 const { patchCallApiShim } = require("../tools/patch/patch-callapi-shim");
 const { patchExposeUpstream } = require("../tools/patch/patch-expose-upstream");
 const { patchExtensionEntry } = require("../tools/patch/patch-extension-entry");
+const { patchModelPickerByokOnly } = require("../tools/patch/patch-model-picker-byok-only");
 const { patchOfficialOverrides } = require("../tools/patch/patch-official-overrides");
 const { patchPackageJsonCommands } = require("../tools/patch/patch-package-json-commands");
 
@@ -96,6 +97,35 @@ test("patchCallApiShim: injects callApi/callApiStream and is idempotent", () => 
     assert.ok(out1.includes(`require("./byok/runtime/shim/call-api-stream").maybeHandleCallApiStream`));
 
     const r2 = patchCallApiShim(filePath);
+    assert.equal(r2.changed, false);
+    const out2 = readUtf8(filePath);
+    assert.equal(out2, out1);
+  });
+});
+
+test("patchModelPickerByokOnly: injects BYOK-only model filter and is idempotent", () => {
+  withTempDir("augment-byok-patch-", (dir) => {
+    const filePath = path.join(dir, "extension.js");
+    const src = [
+      `"use strict";`,
+      `class DJ{`,
+      `  getMergedAdditionalChatModels=()=>{return {}};`,
+      `}`,
+      `exports.DJ=DJ;`,
+      `//# sourceMappingURL=extension.js.map`
+    ].join("\n");
+    writeUtf8(filePath, src);
+
+    const r1 = patchModelPickerByokOnly(filePath);
+    assert.equal(r1.changed, true);
+    assert.equal(r1.patched, 1);
+
+    const out1 = readUtf8(filePath);
+    assert.ok(out1.includes("__augment_byok_model_picker_byok_only_v1"));
+    assert.ok(out1.includes(`require("./byok/config/state").state`));
+    assert.ok(out1.includes(`require("./byok/core/model-picker").getMergedAdditionalChatModelsByokOnly`));
+
+    const r2 = patchModelPickerByokOnly(filePath);
     assert.equal(r2.changed, false);
     const out2 = readUtf8(filePath);
     assert.equal(out2, out1);

@@ -53,6 +53,7 @@ function main(argv = process.argv) {
     "out/byok/core/router.js",
     "out/byok/core/protocol.js",
     "out/byok/core/model-registry.js",
+    "out/byok/core/model-picker.js",
     "out/byok/core/augment-protocol.js",
     "out/byok/core/provider-types.js",
     "out/byok/core/provider-text.js",
@@ -132,6 +133,7 @@ function main(argv = process.argv) {
   assertContains(extJs, "__augment_byok_expose_upstream_v1", "expose upstream (toolsModel) injected");
   assertContains(extJs, "__augment_byok_official_overrides_patched_v1", "official overrides patched");
   assertContains(extJs, "__augment_byok_callapi_shim_patched_v1", "callApi shim patched");
+  assertContains(extJs, "__augment_byok_model_picker_byok_only_v1", "model picker (BYOK-only) patched");
   assert(!extJs.includes("case \"/autoAuth\"") && !extJs.includes("handleAutoAuth"), "autoAuth guard failed (post-check)");
   ok("extension.js markers ok");
 

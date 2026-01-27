@@ -11,6 +11,7 @@ const { patchExtensionEntry } = require("../patch/patch-extension-entry");
 const { patchOfficialOverrides } = require("../patch/patch-official-overrides");
 const { patchCallApiShim } = require("../patch/patch-callapi-shim");
 const { patchExposeUpstream } = require("../patch/patch-expose-upstream");
+const { patchModelPickerByokOnly } = require("../patch/patch-model-picker-byok-only");
 const { patchPackageJsonCommands } = require("../patch/patch-package-json-commands");
 const { guardNoAutoAuth } = require("../patch/guard-no-autoauth");
 
@@ -59,6 +60,9 @@ function applyByokPatches({ repoRoot, extensionDir, pkgPath, extJsPath, intercep
   log(`patch callApi/callApiStream shim`);
   patchCallApiShim(extJs);
 
+  log(`patch model picker (BYOK-only models when enabled)`);
+  patchModelPickerByokOnly(extJs);
+
   log(`guard: no autoAuth`);
   guardNoAutoAuth(extJs);
 
@@ -95,4 +99,3 @@ function runByokContractChecks({ repoRoot, extensionDir, extJsPath, pkgPath, log
 }
 
 module.exports = { applyByokPatches, runByokContractChecks };
-

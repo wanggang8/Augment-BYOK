@@ -4,7 +4,8 @@ const { warn } = require("../../../infra/log");
 const { withTiming } = require("../../../infra/trace");
 const { normalizeString, normalizeRawToken, safeTransform } = require("../../../infra/util");
 const { getOfficialConnection } = require("../../../config/official");
-const { fetchOfficialGetModels, mergeModels } = require("../../official/get-models");
+const { fetchOfficialGetModels } = require("../../official/get-models");
+const { ensureModelRegistryFeatureFlags } = require("../../../core/model-registry");
 const {
   buildMessagesForEndpoint,
   makeBackTextResult,
@@ -24,12 +25,7 @@ const { providerLabel } = require("../common");
 
 async function handleGetModels({ cfg, ep, transform, abortSignal, timeoutMs, upstreamApiToken, upstreamCompletionURL, requestId }) {
   const byokModels = buildByokModelsFromConfig(cfg);
-  const byokDefaultModel = byokModels.length ? byokModels[0] : "";
-  const activeProvider = Array.isArray(cfg?.providers) ? cfg.providers[0] : null;
-  const activeProviderId = normalizeString(activeProvider?.id);
-  const activeProviderDefaultModel = normalizeString(activeProvider?.defaultModel) || normalizeString(activeProvider?.models?.[0]);
-  const preferredByok = activeProviderId && activeProviderDefaultModel ? `byok:${activeProviderId}:${activeProviderDefaultModel}` : "";
-  const preferredDefaultModel = byokModels.includes(preferredByok) ? preferredByok : byokDefaultModel;
+  const defaultModel = (byokModels.length ? byokModels[0] : "") || "unknown";
 
   try {
     const off = getOfficialConnection();
@@ -38,12 +34,29 @@ async function handleGetModels({ cfg, ep, transform, abortSignal, timeoutMs, ups
     const upstream = await withTiming(`[callApi ${ep}] rid=${requestId} official/get-models`, async () =>
       await fetchOfficialGetModels({ completionURL, apiToken, timeoutMs: Math.min(12000, timeoutMs), abortSignal })
     );
-    const merged = mergeModels(upstream, byokModels, { defaultModel: preferredDefaultModel });
-    return safeTransform(transform, merged, ep);
+    if (byokModels.length) {
+      const base = upstream && typeof upstream === "object" ? upstream : {};
+      const baseFlags =
+        base.feature_flags && typeof base.feature_flags === "object" && !Array.isArray(base.feature_flags) ? base.feature_flags : {};
+      const scrubbedFlags = { ...baseFlags };
+      delete scrubbedFlags.additional_chat_models;
+      delete scrubbedFlags.additionalChatModels;
+      delete scrubbedFlags.model_registry;
+      delete scrubbedFlags.modelRegistry;
+      delete scrubbedFlags.model_info_registry;
+      delete scrubbedFlags.modelInfoRegistry;
+
+      const flags = ensureModelRegistryFeatureFlags(scrubbedFlags, { byokModelIds: byokModels, defaultModel, agentChatModel: defaultModel });
+      const models = byokModels.map(makeModelInfo);
+
+      return safeTransform(transform, { ...base, default_model: defaultModel, models, feature_flags: flags }, ep);
+    }
+
+    return safeTransform(transform, upstream, ep);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     warn("get-models fallback to local", { requestId, error: msg });
-    const local = makeBackGetModelsResult({ defaultModel: preferredDefaultModel || "unknown", models: byokModels.map(makeModelInfo) });
+    const local = makeBackGetModelsResult({ defaultModel, models: byokModels.map(makeModelInfo) });
     return safeTransform(transform, local, ep);
   }
 }

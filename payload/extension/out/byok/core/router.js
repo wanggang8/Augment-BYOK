@@ -23,7 +23,15 @@ const DEFAULT_ROUTING_RULES = (() => {
 
 function pickRequestedModel(body) {
   if (!body || typeof body !== "object") return "";
-  const v = body.model ?? body.model_name ?? body.modelName ?? body.provider_model_name ?? body.providerModelName;
+  const v =
+    body.model ??
+    body.model_id ??
+    body.modelId ??
+    body.modelID ??
+    body.model_name ??
+    body.modelName ??
+    body.provider_model_name ??
+    body.providerModelName;
   return normalizeString(v);
 }
 
@@ -60,10 +68,10 @@ function decideRoute({ cfg, endpoint, body, runtimeEnabled }) {
   if (mode === "disabled") return { mode, endpoint: ep, reason: "rule" };
   if (mode === "official" && !parsed) return { mode, endpoint: ep, reason: "rule" };
   if (mode !== "byok" && !parsed) return { mode: "official", endpoint: ep, reason: "unknown_mode" };
-  const providerId = normalizeString(rule?.providerId) || parsed?.providerId || "";
+  const providerId = normalizeString(parsed?.providerId) || normalizeString(rule?.providerId) || "";
   const provider = pickProvider(cfg, providerId);
   const parsedModel = parsed && normalizeString(parsed.providerId) === normalizeString(provider?.id) ? parsed.modelId : "";
-  const model = normalizeString(rule?.model) || normalizeString(parsedModel) || normalizeString(provider?.defaultModel) || "";
+  const model = normalizeString(parsedModel) || normalizeString(rule?.model) || normalizeString(provider?.defaultModel) || "";
   return { mode: "byok", endpoint: ep, reason: parsed && mode !== "byok" ? "model_override" : "byok", provider, model, requestedModel };
 }
 

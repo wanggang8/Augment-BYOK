@@ -84,6 +84,12 @@
   - 其它端点即使设置 `mode=byok`，也会回落 official（因为 runtime shim 只实现了 13 个）
 - model id 约定：`byok:<providerId>:<modelId>`
   - `/get-models` 会把 `providers[].models` 注入到 model registry（含 feature flags），从而让上游能选择 `byok:*`
+- Model Picker（主面板模型选择）与 Endpoint Rules 的优先级（仅 BYOK 路径生效）
+  - **model**：Model Picker 选择的 `byok:*` > `routing.rules[endpoint].model` > `providers[].defaultModel`
+  - **providerId**：Model Picker 选择的 `byok:*` > `routing.rules[endpoint].providerId` > `providers[0]`
+- Model Picker 列表（`/get-models`）
+  - 当 `runtimeEnabled=true` 且 `/get-models` 走 BYOK shim 时，返回的 `models[]` 会只包含 `byok:*`（不再混入官方模型），避免“选了官方模型但 BYOK 实际忽略”的困惑
+  - 需要恢复官方模型列表：`BYOK: Disable (Rollback)`（让 `/get-models` 回到官方实现）
 - `mode=disabled`
   - `callApi`：返回 `{}`（no-op）
   - `callApiStream`：返回空 stream

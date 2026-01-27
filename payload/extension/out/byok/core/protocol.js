@@ -105,18 +105,31 @@ function makeBackNextEditLocationResult(candidate_locations) {
 }
 
 function buildByokModelsFromConfig(cfg) {
-  const out = new Set();
+  const out = [];
+  const seen = new Set();
+  const add = (id) => {
+    const s = normalizeString(id);
+    if (!s || seen.has(s)) return;
+    seen.add(s);
+    out.push(s);
+  };
   const providers = Array.isArray(cfg?.providers) ? cfg.providers : [];
+
+  const activeProvider = providers[0] || null;
+  const activeProviderId = normalizeString(activeProvider?.id);
+  const activeProviderDefaultModel = normalizeString(activeProvider?.defaultModel) || normalizeString(activeProvider?.models?.[0]);
+  if (activeProviderId && activeProviderDefaultModel) add(`byok:${activeProviderId}:${activeProviderDefaultModel}`);
+
   for (const p of providers) {
     const pid = normalizeString(p?.id);
     if (!pid) continue;
     const models = Array.isArray(p?.models) ? p.models : [];
     for (const m of models) {
       const mid = normalizeString(m);
-      if (mid) out.add(`byok:${pid}:${mid}`);
+      if (mid) add(`byok:${pid}:${mid}`);
     }
     const dm = normalizeString(p?.defaultModel);
-    if (dm) out.add(`byok:${pid}:${dm}`);
+    if (dm) add(`byok:${pid}:${dm}`);
   }
 
   const rules = cfg?.routing?.rules && typeof cfg.routing.rules === "object" ? cfg.routing.rules : null;
@@ -125,10 +138,10 @@ function buildByokModelsFromConfig(cfg) {
       if (!r || typeof r !== "object") continue;
       const pid = normalizeString(r.providerId);
       const mid = normalizeString(r.model);
-      if (pid && mid) out.add(`byok:${pid}:${mid}`);
+      if (pid && mid) add(`byok:${pid}:${mid}`);
     }
   }
-  return Array.from(out);
+  return out;
 }
 
 function makeBackGetModelsResult({ defaultModel, models }) {
