@@ -14,7 +14,7 @@ test("makeSseJsonIterator: yields json events and tracks stats", async () => {
   const sse = makeSseJsonIterator(resp);
   const events = await collect(sse.events);
   assert.deepEqual(events.map((e) => e.json), [{ a: 1 }]);
-  assert.deepEqual(sse.stats, { dataEvents: 1, parsedChunks: 1 });
+  assert.deepEqual(sse.stats, { dataEvents: 1, parsedChunks: 1, doneSeen: false });
 });
 
 test("makeSseJsonIterator: derives eventType from json.type then from SSE event", async () => {
@@ -30,7 +30,7 @@ test("makeSseJsonIterator: respects doneData and counts it as a data event", asy
   const sse = makeSseJsonIterator(resp, { doneData: "[DONE]" });
   const events = await collect(sse.events);
   assert.deepEqual(events.map((e) => e.json), [{ a: 1 }]);
-  assert.deepEqual(sse.stats, { dataEvents: 2, parsedChunks: 1 });
+  assert.deepEqual(sse.stats, { dataEvents: 2, parsedChunks: 1, doneSeen: true });
 });
 
 test("makeSseJsonIterator: skips invalid json but still counts the data event", async () => {
@@ -38,6 +38,5 @@ test("makeSseJsonIterator: skips invalid json but still counts the data event", 
   const sse = makeSseJsonIterator(resp);
   const events = await collect(sse.events);
   assert.deepEqual(events.map((e) => e.json), [{ ok: true }]);
-  assert.deepEqual(sse.stats, { dataEvents: 2, parsedChunks: 1 });
+  assert.deepEqual(sse.stats, { dataEvents: 2, parsedChunks: 1, doneSeen: false });
 });
-

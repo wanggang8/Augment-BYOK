@@ -45,7 +45,8 @@ async function* byokChatStream({ cfg, provider, model, requestedModel, body, tim
     toolMetaByName,
     supportToolUseStart,
     supportParallelToolUse,
-    traceLabel: ctx.traceLabel
+    traceLabel: ctx.traceLabel,
+    nodeIdStart: 0
   });
 
   if (!ctx.checkpointNotFound && ctx.workspaceFileChunks.length === 0) {

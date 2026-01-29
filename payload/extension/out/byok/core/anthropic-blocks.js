@@ -1,7 +1,7 @@
 "use strict";
 
 const { normalizeString } = require("../infra/util");
-const { truncateText } = require("../infra/text");
+const { truncateText, truncateTextMiddle } = require("../infra/text");
 
 function normalizeAnthropicBlocks(content) {
   if (Array.isArray(content)) return content.filter((b) => b && typeof b === "object");
@@ -25,7 +25,7 @@ function stringifyAnthropicToolResultContent(content) {
 function buildOrphanAnthropicToolResultAsTextBlock(block, opts) {
   const maxLen = Number.isFinite(Number(opts?.maxOrphanContentLen)) ? Number(opts.maxOrphanContentLen) : 8000;
   const id = normalizeString(block?.tool_use_id);
-  const content = truncateText(stringifyAnthropicToolResultContent(block?.content), maxLen).trim();
+  const content = truncateTextMiddle(stringifyAnthropicToolResultContent(block?.content), maxLen).trim();
   const header = id ? `[orphan_tool_result tool_use_id=${id}]` : "[orphan_tool_result]";
   return { type: "text", text: content ? `${header}\n${content}` : header };
 }
@@ -66,7 +66,7 @@ function stripAnthropicToolBlocksFromMessages(messages, opts) {
         const id = normalizeString(b.tool_use_id);
         const isErr = Boolean(b.is_error);
         const header = `[tool_result${id ? ` tool_use_id=${id}` : ""}${isErr ? " is_error=true" : ""}]`;
-        const contentText = truncateText(stringifyAnthropicToolResultContent(b.content), maxLen).trim();
+        const contentText = truncateTextMiddle(stringifyAnthropicToolResultContent(b.content), maxLen).trim();
         const text = contentText ? `${header}\n${contentText}` : header;
         rewritten.push({ type: "text", text });
         changed = true;

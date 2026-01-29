@@ -4,19 +4,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const { ensureMarker } = require("../lib/patch");
+const { ensureMarker, replaceOnceRegex } = require("../lib/patch");
 
 const MARKER = "__augment_byok_webview_history_summary_node_slim_v1";
-
-function replaceOnce(src, needle, replacement, label) {
-  const s = String(src || "");
-  const n = String(needle || "");
-  const r = String(replacement ?? "");
-  const idx = s.indexOf(n);
-  if (idx < 0) throw new Error(`${label} needle not found (upstream may have changed)`);
-  if (s.indexOf(n, idx + n.length) >= 0) throw new Error(`${label} needle matched multiple times (refuse to patch)`);
-  return s.replace(n, r);
-}
 
 function patchExtensionClientContextAsset(filePath) {
   if (!fs.existsSync(filePath)) throw new Error(`missing file: ${filePath}`);
@@ -30,13 +20,19 @@ function patchExtensionClientContextAsset(filePath) {
   // 这样：语义保持（模型仍拿到同样的 supervisor prompt），同时避免把 history_end 的巨型结构长期挂在 state 上。
   let out = original;
 
-  const needle =
-    'if(n.useHistorySummaryNew){const C={summary_text:F.responseText,summarization_request_id:F.requestId,history_beginning_dropped_num_exchanges:V,history_middle_abridged_text:X,history_end:c,message_template:n.summaryNodeRequestMessageTemplateNew},U={id:0,type:Ce.HISTORY_SUMMARY,history_summary_node:C};console.info("Storing HISTORY_SUMMARY node for next exchange"),yield*E(rS(t,U))}';
-
-  const replacement =
-    'if(n.useHistorySummaryNew){const C={summary_text:F.responseText,summarization_request_id:F.requestId,history_beginning_dropped_num_exchanges:V,history_middle_abridged_text:X,history_end:c,message_template:n.summaryNodeRequestMessageTemplateNew},U={id:0,type:Ce.TEXT,text_node:{content:V5(C)}};console.info("Storing HISTORY_SUMMARY node for next exchange"),yield*E(rS(t,U))}';
-
-  out = replaceOnce(out, needle, replacement, "extension-client-context HISTORY_SUMMARY node slimming");
+  // 兼容上游小版本变更：不强依赖整段变量名（N/F/aS/rS 等），只替换“把 payload C 存入 HISTORY_SUMMARY 节点”的那一小段。
+  // 目标：U={id:0,type:Ce.HISTORY_SUMMARY,history_summary_node:C} -> U={id:0,type:Ce.TEXT,text_node:{content:V5(C)}}
+  //
+  // NOTE: V5 是上游内部函数：把 summary payload 按 message_template 渲染为最终字符串。
+  const summaryNodeRe = /\{id:0,type:Ce\.HISTORY_SUMMARY,history_summary_node:([A-Za-z_$][0-9A-Za-z_$]*)\}/g;
+  const summaryNodeReCamel = /\{id:0,type:Ce\.HISTORY_SUMMARY,historySummaryNode:([A-Za-z_$][0-9A-Za-z_$]*)\}/g;
+  try {
+    out = replaceOnceRegex(out, summaryNodeRe, (m) => `{id:0,type:Ce.TEXT,text_node:{content:V5(${m[1]})}}`, "extension-client-context HISTORY_SUMMARY node slimming");
+  } catch (err) {
+    // fallback to camelCase variant (upstream drift)
+    if (!(err instanceof Error) || !/needle not found/i.test(err.message)) throw err;
+    out = replaceOnceRegex(out, summaryNodeReCamel, (m) => `{id:0,type:Ce.TEXT,text_node:{content:V5(${m[1]})}}`, "extension-client-context HISTORY_SUMMARY node slimming (camel)");
+  }
 
   out = ensureMarker(out, MARKER);
   fs.writeFileSync(filePath, out, "utf8");

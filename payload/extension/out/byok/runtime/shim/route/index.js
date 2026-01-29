@@ -7,13 +7,34 @@ const { deleteHistorySummaryCache } = require("../../../core/augment-history-sum
 const { normalizeEndpoint, normalizeString, randomId } = require("../../../infra/util");
 const { normalizeTimeoutMs, formatRouteForLog } = require("../common");
 
+function safeDecodeURIComponent(v) {
+  try {
+    return decodeURIComponent(String(v || ""));
+  } catch {
+    return String(v || "");
+  }
+}
+
+function extractConversationIdFromEndpoint(ep) {
+  const endpoint = normalizeEndpoint(ep);
+  if (!endpoint) return "";
+  const lower = endpoint.toLowerCase();
+  if (!lower.includes("conversation") && !lower.includes("thread")) return "";
+
+  const m = endpoint.match(/\/(?:conversations?|threads?)\/([^/]+)/i);
+  if (m && m[1]) return normalizeString(safeDecodeURIComponent(m[1]));
+
+  return "";
+}
+
 async function maybeDeleteHistorySummaryCacheForEndpoint(ep, body) {
   const endpoint = normalizeEndpoint(ep);
   if (!endpoint) return false;
   const lower = endpoint.toLowerCase();
   if (!lower.includes("delete") && !lower.includes("remove") && !lower.includes("archive")) return false;
   const b = body && typeof body === "object" && !Array.isArray(body) ? body : null;
-  const conversationId = normalizeString(b?.conversation_id ?? b?.conversationId ?? b?.conversationID);
+  const conversationId =
+    normalizeString(b?.conversation_id ?? b?.conversationId ?? b?.conversationID) || extractConversationIdFromEndpoint(endpoint);
   if (!conversationId) return false;
   try {
     const ok = await deleteHistorySummaryCache(conversationId);

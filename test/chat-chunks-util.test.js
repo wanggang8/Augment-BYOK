@@ -6,6 +6,7 @@ const {
   RESPONSE_NODE_TOOL_USE_START,
   RESPONSE_NODE_TOOL_USE,
   RESPONSE_NODE_TOKEN_USAGE,
+  STOP_REASON_UNSPECIFIED,
   STOP_REASON_END_TURN,
   STOP_REASON_MAX_TOKENS,
   STOP_REASON_TOOL_USE_REQUESTED
@@ -94,4 +95,9 @@ test("buildFinalChatChunk: defaults to tool_use_requested when saw tool use", ()
 test("buildFinalChatChunk: explicit stopReason overrides tool_use_requested", () => {
   const built = buildFinalChatChunk({ nodeId: 0, stopReasonSeen: true, stopReason: STOP_REASON_MAX_TOKENS, sawToolUse: true });
   assert.equal(built.chunk.stop_reason, STOP_REASON_MAX_TOKENS);
+});
+
+test("buildFinalChatChunk: emits unspecified stop_reason when stream ended uncleanly", () => {
+  const built = buildFinalChatChunk({ nodeId: 0, stopReasonSeen: false, stopReason: null, sawToolUse: false, endedCleanly: false });
+  assert.equal(built.chunk.stop_reason, STOP_REASON_UNSPECIFIED);
 });

@@ -18,6 +18,12 @@ const { runSummaryModelOnce } = require("../provider-dispatch");
 const { approxTokenCountFromByteLen, estimateRequestExtraSizeChars, estimateHistorySizeChars } = require("./estimate");
 const { resolveContextWindowTokens, resolveHistorySummaryConfig, pickProviderById } = require("./config");
 const { computeTailSelection } = require("./tail-selection");
+const {
+  DEFAULT_SUMMARY_TAIL_REQUEST_IDS,
+  historyStartRequestId,
+  tailRequestIds,
+  computeRequestIdsHash
+} = require("../consistency");
 
 const { asRecord, asArray, asString, pick, normalizeNodeType } = shared;
 
@@ -108,7 +114,7 @@ async function resolveSummaryText({
   abortSignal
 }) {
   const now = nowMs();
-  const cached = cacheGetFresh(convId, boundaryRequestId, now, hs.cacheTtlMs);
+  const cached = cacheGetFresh(convId, boundaryRequestId, now, hs.cacheTtlMs, { history, droppedHead });
   if (cached) return { summaryText: cached.summaryText, summarizationRequestId: cached.summarizationRequestId, now };
 
   const provider = pickProviderById(cfg, hs.providerId) || fallbackProvider;
@@ -118,7 +124,7 @@ async function resolveSummaryText({
 
   let usedRolling = false;
   if (hs.rollingSummary === true) {
-    const prev = cacheGetFreshState(convId, now, hs.cacheTtlMs);
+    const prev = cacheGetFreshState(convId, now, hs.cacheTtlMs, { history });
     const rollingPrompt = buildRollingUpdatePrompt(hs.prompt);
     if (
       prev &&
@@ -159,7 +165,12 @@ async function resolveSummaryText({
   );
   if (!summaryText) return null;
   const summarizationRequestId = `byok_history_summary_${now}`;
-  await cachePut(convId, boundaryRequestId, summaryText, summarizationRequestId, now);
+  await cachePut(convId, boundaryRequestId, summaryText, summarizationRequestId, now, {
+    startRequestId: historyStartRequestId(history),
+    summarizedUntilIndex: droppedHead.length,
+    summarizedRequestIdsHash: computeRequestIdsHash(droppedHead),
+    summarizedTailRequestIds: tailRequestIds(droppedHead, DEFAULT_SUMMARY_TAIL_REQUEST_IDS)
+  });
   return { summaryText, summarizationRequestId, now };
 }
 
@@ -255,7 +266,7 @@ async function maybeSummarizeAndCompactAugmentChatRequest({
 
   // 当 Augment 客户端已按轮数裁剪掉历史中的 summary exchange 时，仍然需要用缓存的 summary 补回“早期上下文”，否则会退化为仅剩最近 N 轮。
   const now = nowMs();
-  const cached = hs.rollingSummary === true ? cacheGetFreshState(convId, now, hs.cacheTtlMs) : null;
+  const cached = hs.rollingSummary === true ? cacheGetFreshState(convId, now, hs.cacheTtlMs, { history }) : null;
   if (!cached || !normalizeString(cached.summaryText)) return false;
 
   const sel2 = computeTailSelection({

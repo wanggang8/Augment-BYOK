@@ -2,6 +2,7 @@
 
 const { normalizeString } = require("../infra/util");
 const {
+  STOP_REASON_UNSPECIFIED,
   STOP_REASON_END_TURN,
   STOP_REASON_TOOL_USE_REQUESTED,
   toolUseStartNode,
@@ -89,12 +90,19 @@ function buildTokenUsageChunk({ nodeId, inputTokens, outputTokens, cacheReadInpu
   };
 }
 
-function buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse }) {
+function buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse, endedCleanly } = {}) {
   let nextId = Number(nodeId);
   if (!Number.isFinite(nextId) || nextId < 0) nextId = 0;
 
+  const clean = endedCleanly !== false;
   const stop_reason =
-    stopReasonSeen && stopReason != null ? stopReason : sawToolUse ? STOP_REASON_TOOL_USE_REQUESTED : STOP_REASON_END_TURN;
+    stopReasonSeen && stopReason != null
+      ? stopReason
+      : !clean
+        ? STOP_REASON_UNSPECIFIED
+        : sawToolUse
+          ? STOP_REASON_TOOL_USE_REQUESTED
+          : STOP_REASON_END_TURN;
   return { nodeId: nextId, chunk: makeBackChatChunk({ text: "", nodes: [], stop_reason }) };
 }
 

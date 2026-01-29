@@ -6,7 +6,7 @@ const { debug } = require("../../infra/log");
 const { withJsonContentType } = require("../headers");
 const { isInvalidRequestStatusForFallback } = require("../provider-util");
 const { fetchOkWithRetry } = require("../request-util");
-const { pickPositiveIntFromRecord, deleteKeysFromRecord } = require("../request-defaults-util");
+const { MAX_TOKENS_ALIAS_KEYS, pickPositiveIntFromRecord, deleteKeysFromRecord } = require("../request-defaults-util");
 
 function normalizeGeminiModel(model) {
   const m = requireString(model, "Gemini model");
@@ -24,14 +24,7 @@ function normalizeGeminiRequestDefaults(requestDefaults) {
   const gc = out.generationConfig && typeof out.generationConfig === "object" && !Array.isArray(out.generationConfig) ? out.generationConfig : null;
   const hasGcMax = gc && Number.isFinite(Number(gc.maxOutputTokens)) && Number(gc.maxOutputTokens) > 0;
   if (!hasGcMax) {
-    const maxOutput = pickPositiveIntFromRecord(out, [
-      "maxOutputTokens",
-      "max_output_tokens",
-      "max_tokens",
-      "maxTokens",
-      "max_completion_tokens",
-      "maxCompletionTokens"
-    ]);
+    const maxOutput = pickPositiveIntFromRecord(out, MAX_TOKENS_ALIAS_KEYS);
     if (maxOutput != null) {
       const nextGc = gc ? { ...gc } : {};
       nextGc.maxOutputTokens = maxOutput;
@@ -39,14 +32,7 @@ function normalizeGeminiRequestDefaults(requestDefaults) {
     }
   }
 
-  deleteKeysFromRecord(out, [
-    "maxOutputTokens",
-    "max_output_tokens",
-    "max_tokens",
-    "maxTokens",
-    "max_completion_tokens",
-    "maxCompletionTokens"
-  ]);
+  deleteKeysFromRecord(out, MAX_TOKENS_ALIAS_KEYS);
 
   return out;
 }

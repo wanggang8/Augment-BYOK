@@ -2,23 +2,18 @@
 
 const { normalizeString } = require("../../infra/util");
 const { normalizeAnthropicBlocks, buildOrphanAnthropicToolResultAsTextBlock } = require("../anthropic-blocks");
-const { TOOL_RESULT_MISSING_MESSAGE, normalizeRole } = require("./common");
+const { normalizeRole, buildMissingToolResultContent } = require("./common");
 
 function buildMissingAnthropicToolResultBlock({ toolUseId, toolName, input } = {}) {
-  const payload = {
-    error: "tool_result_missing",
-    tool_use_id: String(toolUseId || ""),
-    tool_name: normalizeString(toolName) || undefined,
-    message: TOOL_RESULT_MISSING_MESSAGE
-  };
-  if (input && typeof input === "object" && !Array.isArray(input)) payload.input = input;
-  let content;
-  try {
-    content = JSON.stringify(payload);
-  } catch {
-    content = String(payload.message || "tool_result_missing");
-  }
-  return { type: "tool_result", tool_use_id: String(toolUseId || ""), content, is_error: true };
+  const toolUseIdText = String(toolUseId || "");
+  const content = buildMissingToolResultContent({
+    idKey: "tool_use_id",
+    id: toolUseIdText,
+    toolName,
+    inputKey: "input",
+    input
+  });
+  return { type: "tool_result", tool_use_id: toolUseIdText, content, is_error: true };
 }
 
 function repairAnthropicToolUsePairs(messages, opts) {

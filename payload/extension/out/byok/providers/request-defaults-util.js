@@ -1,5 +1,25 @@
 "use strict";
 
+const MAX_TOKENS_ALIAS_KEYS = [
+  "maxOutputTokens",
+  "max_output_tokens",
+  "max_tokens",
+  "maxTokens",
+  "max_completion_tokens",
+  "maxCompletionTokens"
+];
+
+const MAX_TOKENS_ALIAS_KEYS_PREFER_MAX_TOKENS = [
+  "max_tokens",
+  "maxTokens",
+  "max_output_tokens",
+  "maxOutputTokens",
+  "max_completion_tokens",
+  "maxCompletionTokens"
+];
+
+const MAX_TOKENS_ALIAS_KEYS_EXCEPT_MAX_OUTPUT_TOKENS = MAX_TOKENS_ALIAS_KEYS.filter((k) => k !== "max_output_tokens");
+
 function normalizePositiveInt(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -31,4 +51,11 @@ function deleteKeysFromRecord(record, keys) {
   return changed;
 }
 
-module.exports = { normalizePositiveInt, pickPositiveIntFromRecord, deleteKeysFromRecord };
+module.exports = {
+  MAX_TOKENS_ALIAS_KEYS,
+  MAX_TOKENS_ALIAS_KEYS_EXCEPT_MAX_OUTPUT_TOKENS,
+  MAX_TOKENS_ALIAS_KEYS_PREFER_MAX_TOKENS,
+  normalizePositiveInt,
+  pickPositiveIntFromRecord,
+  deleteKeysFromRecord
+};

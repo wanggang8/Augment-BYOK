@@ -1,8 +1,7 @@
 "use strict";
 
 const { normalizeString } = require("../../infra/util");
-const { truncateText } = require("../../infra/text");
-const { TOOL_RESULT_MISSING_MESSAGE, normalizeRole } = require("./common");
+const { normalizeRole, buildMissingToolResultContent, buildOrphanToolResultAsUserContent } = require("./common");
 
 function normalizeToolCall(tc) {
   const rec = tc && typeof tc === "object" ? tc : {};
@@ -14,31 +13,6 @@ function normalizeToolCall(tc) {
     name: normalizeString(fn.name),
     arguments: typeof fn.arguments === "string" ? fn.arguments : ""
   };
-}
-
-function buildMissingToolResultContent(tc, opts) {
-  const maxArgsLen = Number.isFinite(Number(opts?.maxArgsLen)) ? Number(opts.maxArgsLen) : 4000;
-  const payload = {
-    error: "tool_result_missing",
-    tool_call_id: normalizeString(tc?.id),
-    tool_name: normalizeString(tc?.name) || undefined,
-    message: TOOL_RESULT_MISSING_MESSAGE
-  };
-  const args = normalizeString(tc?.arguments);
-  if (args) payload.arguments = truncateText(args, maxArgsLen);
-  try {
-    return JSON.stringify(payload);
-  } catch {
-    return String(payload.message || "tool_result_missing");
-  }
-}
-
-function buildOrphanToolResultAsUserContent(msg, opts) {
-  const maxLen = Number.isFinite(Number(opts?.maxOrphanContentLen)) ? Number(opts.maxOrphanContentLen) : 8000;
-  const id = normalizeString(msg?.tool_call_id);
-  const content = truncateText(typeof msg?.content === "string" ? msg.content : String(msg?.content ?? ""), maxLen).trim();
-  const header = id ? `[orphan_tool_result tool_call_id=${id}]` : "[orphan_tool_result]";
-  return content ? `${header}\n${content}` : header;
 }
 
 function repairOpenAiToolCallPairs(messages, opts) {
@@ -59,14 +33,33 @@ function repairOpenAiToolCallPairs(messages, opts) {
       return;
     }
     for (const tc of pending.values()) {
-      out.push({ role: "tool", tool_call_id: tc.id, content: buildMissingToolResultContent(tc, opts) });
+      out.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: buildMissingToolResultContent({
+          idKey: "tool_call_id",
+          id: tc.id,
+          toolName: tc.name,
+          args: tc.arguments,
+          maxArgsLen: opts?.maxArgsLen
+        })
+      });
       report.injected_missing_tool_results += 1;
     }
     pending = null;
   };
 
   const handleOrphanTool = (msg) => {
-    out.push({ role: "user", content: buildOrphanToolResultAsUserContent(msg, opts) });
+    out.push({
+      role: "user",
+      content: buildOrphanToolResultAsUserContent({
+        kind: "orphan_tool_result",
+        idLabel: "tool_call_id",
+        id: msg?.tool_call_id,
+        content: msg?.content,
+        maxLen: opts?.maxOrphanContentLen
+      })
+    });
     report.converted_orphan_tool_results += 1;
   };
 

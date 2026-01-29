@@ -85,7 +85,7 @@ async function* anthropicStreamTextDeltas({ baseUrl, apiKey, model, system, mess
   }
 }
 
-async function* anthropicChatStreamChunks({ baseUrl, apiKey, model, system, messages, tools, timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart }) {
+async function* anthropicChatStreamChunks({ baseUrl, apiKey, model, system, messages, tools, timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart, nodeIdStart }) {
   const minimalDefaults = buildMinimalRetryRequestDefaults(requestDefaults);
   const strippedMessages = stripAnthropicToolBlocksFromMessages(messages, { maxToolTextLen: 8000 });
   const strippedNoImageMessages = stripAnthropicImageBlocksFromMessages(strippedMessages);
@@ -122,7 +122,8 @@ async function* anthropicChatStreamChunks({ baseUrl, apiKey, model, system, mess
 
   const getToolMeta = makeToolMetaGetter(toolMetaByName);
 
-  let nodeId = 0;
+  let nodeId = Number(nodeIdStart);
+  if (!Number.isFinite(nodeId) || nodeId < 0) nodeId = 0;
   let stopReason = null;
   let stopReasonSeen = false;
   let sawToolUse = false;
@@ -136,6 +137,7 @@ async function* anthropicChatStreamChunks({ baseUrl, apiKey, model, system, mess
   let toolInputJson = "";
   let thinkingBuf = "";
   let emittedChunks = 0;
+  let sawMessageStop = false;
 
   const sse = makeSseJsonIterator(resp);
   for await (const { json, eventType } of sse.events) {
@@ -226,7 +228,7 @@ async function* anthropicChatStreamChunks({ baseUrl, apiKey, model, system, mess
       continue;
     }
 
-    if (eventType === "message_stop") break;
+    if (eventType === "message_stop") { sawMessageStop = true; break; }
     if (eventType === "error") {
       const msg = normalizeString(extractErrorMessageFromJson(json)) || "upstream error event";
       throw new Error(`Anthropic(chat-stream) upstream error event: ${msg}`.trim());
@@ -259,7 +261,7 @@ async function* anthropicChatStreamChunks({ baseUrl, apiKey, model, system, mess
   nodeId = usageBuilt.nodeId;
   if (usageBuilt.chunk) yield usageBuilt.chunk;
 
-  const final = buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse });
+  const final = buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse, endedCleanly: sawMessageStop });
   yield final.chunk;
 }
 

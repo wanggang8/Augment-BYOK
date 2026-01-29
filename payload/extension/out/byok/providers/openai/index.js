@@ -117,7 +117,8 @@ async function* openAiChatStreamChunks({
   requestDefaults,
   toolMetaByName,
   supportToolUseStart,
-  supportParallelToolUse
+  supportParallelToolUse,
+  nodeIdStart
 }) {
   const hasTools = Array.isArray(tools) && tools.length > 0;
   const rdRaw = requestDefaults && typeof requestDefaults === "object" && !Array.isArray(requestDefaults) ? requestDefaults : {};
@@ -138,7 +139,8 @@ async function* openAiChatStreamChunks({
   const getToolMeta = makeToolMetaGetter(toolMetaByName);
 
   const toolCallsByIndex = new Map();
-  let nodeId = 0;
+  let nodeId = Number(nodeIdStart);
+  if (!Number.isFinite(nodeId) || nodeId < 0) nodeId = 0;
   let thinkingBuf = "";
   let sawToolUse = false;
   let stopReason = null;
@@ -256,7 +258,8 @@ async function* openAiChatStreamChunks({
   nodeId = usageBuilt.nodeId;
   if (usageBuilt.chunk) yield usageBuilt.chunk;
 
-  const final = buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse });
+  const endedCleanly = Boolean(sse.stats.doneSeen) || stopReasonSeen === true;
+  const final = buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse, endedCleanly });
   yield final.chunk;
 }
 

@@ -1,8 +1,7 @@
 "use strict";
 
 const { normalizeString } = require("../../infra/util");
-const { truncateText } = require("../../infra/text");
-const { TOOL_RESULT_MISSING_MESSAGE } = require("./common");
+const { safeJsonStringify, buildMissingToolResultContent, buildOrphanToolResultAsUserContent } = require("./common");
 
 function normalizeItemType(item) {
   const t = normalizeString(item?.type).toLowerCase();
@@ -19,30 +18,18 @@ function normalizeFunctionCall(item) {
   return { call_id, name: normalizeString(item?.name), arguments: typeof item?.arguments === "string" ? item.arguments : "" };
 }
 
-function buildMissingOpenAiResponsesToolResultOutput(tc, opts) {
-  const maxArgsLen = Number.isFinite(Number(opts?.maxArgsLen)) ? Number(opts.maxArgsLen) : 4000;
-  const payload = {
-    error: "tool_result_missing",
-    call_id: normalizeCallId(tc?.call_id),
-    tool_name: normalizeString(tc?.name) || undefined,
-    message: TOOL_RESULT_MISSING_MESSAGE
-  };
-  const args = normalizeString(tc?.arguments);
-  if (args) payload.arguments = truncateText(args, maxArgsLen);
-  try {
-    return JSON.stringify(payload);
-  } catch {
-    return String(payload.message || "tool_result_missing");
-  }
-}
-
 function buildOrphanOpenAiResponsesToolResultAsUserMessage(item, opts) {
-  const maxLen = Number.isFinite(Number(opts?.maxOrphanContentLen)) ? Number(opts.maxOrphanContentLen) : 8000;
-  const callId = normalizeCallId(item?.call_id);
-  const out = item?.output;
-  const content = truncateText(typeof out === "string" ? out : JSON.stringify(out ?? null), maxLen).trim();
-  const header = callId ? `[orphan_function_call_output call_id=${callId}]` : "[orphan_function_call_output]";
-  return { type: "message", role: "user", content: content ? `${header}\n${content}` : header };
+  return {
+    type: "message",
+    role: "user",
+    content: buildOrphanToolResultAsUserContent({
+      kind: "orphan_function_call_output",
+      idLabel: "call_id",
+      id: item?.call_id,
+      content: safeJsonStringify(item?.output ?? null, ""),
+      maxLen: opts?.maxOrphanContentLen
+    })
+  };
 }
 
 function repairOpenAiResponsesToolCallPairs(inputItems, opts) {
@@ -63,7 +50,17 @@ function repairOpenAiResponsesToolCallPairs(inputItems, opts) {
       return;
     }
     for (const tc of pending.values()) {
-      out.push({ type: "function_call_output", call_id: tc.call_id, output: buildMissingOpenAiResponsesToolResultOutput(tc, opts) });
+      out.push({
+        type: "function_call_output",
+        call_id: tc.call_id,
+        output: buildMissingToolResultContent({
+          idKey: "call_id",
+          id: tc.call_id,
+          toolName: tc.name,
+          args: tc.arguments,
+          maxArgsLen: opts?.maxArgsLen
+        })
+      });
       report.injected_missing_tool_results += 1;
     }
     pending = null;

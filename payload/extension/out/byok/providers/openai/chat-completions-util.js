@@ -2,7 +2,7 @@
 
 const { joinBaseUrl } = require("../http");
 const { normalizeString, requireString, normalizeRawToken, stripByokInternalKeys } = require("../../infra/util");
-const { truncateText } = require("../../infra/text");
+const { truncateText, truncateTextMiddle } = require("../../infra/text");
 const { withJsonContentType, openAiAuthHeaders } = require("../headers");
 const { isInvalidRequestStatusForFallback } = require("../provider-util");
 const { fetchOkWithRetry } = require("../request-util");
@@ -153,7 +153,7 @@ function stripVisionFromMessages(messages) {
 function buildOrphanToolResultAsUserContent(msg, { maxLen = 8000 } = {}) {
   const id = normalizeString(msg?.tool_call_id);
   const raw = typeof msg?.content === "string" ? msg.content : String(msg?.content ?? "");
-  const content = truncateText(raw, maxLen).trim();
+  const content = truncateTextMiddle(raw, maxLen).trim();
   const header = id ? `[orphan_tool_result tool_call_id=${id}]` : "[orphan_tool_result]";
   return content ? `${header}\n${content}` : header;
 }

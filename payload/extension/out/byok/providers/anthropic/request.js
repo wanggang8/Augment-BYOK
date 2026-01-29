@@ -8,19 +8,10 @@ const { withJsonContentType, anthropicAuthHeaders } = require("../headers");
 const { isInvalidRequestStatusForFallback } = require("../provider-util");
 const { fetchWithRetry, readHttpErrorDetail } = require("../request-util");
 const { repairAnthropicToolUsePairs } = require("../../core/tool-pairing");
-const { pickPositiveIntFromRecord } = require("../request-defaults-util");
+const { MAX_TOKENS_ALIAS_KEYS_PREFER_MAX_TOKENS, pickPositiveIntFromRecord } = require("../request-defaults-util");
 
 function pickMaxTokens(requestDefaults) {
-  return (
-    pickPositiveIntFromRecord(requestDefaults, [
-      "max_tokens",
-      "maxTokens",
-      "max_output_tokens",
-      "maxOutputTokens",
-      "max_completion_tokens",
-      "maxCompletionTokens"
-    ]) ?? 1024
-  );
+  return pickPositiveIntFromRecord(requestDefaults, MAX_TOKENS_ALIAS_KEYS_PREFER_MAX_TOKENS) ?? 1024;
 }
 
 function normalizeStopSequences(v) {

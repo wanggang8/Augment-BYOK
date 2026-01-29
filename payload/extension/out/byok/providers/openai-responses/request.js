@@ -3,7 +3,12 @@
 const { joinBaseUrl } = require("../http");
 const { normalizeString, requireString, normalizeRawToken, stripByokInternalKeys } = require("../../infra/util");
 const { withJsonContentType, openAiAuthHeaders } = require("../headers");
-const { pickPositiveIntFromRecord, deleteKeysFromRecord } = require("../request-defaults-util");
+const {
+  MAX_TOKENS_ALIAS_KEYS,
+  MAX_TOKENS_ALIAS_KEYS_EXCEPT_MAX_OUTPUT_TOKENS,
+  pickPositiveIntFromRecord,
+  deleteKeysFromRecord
+} = require("../request-defaults-util");
 
 function normalizeOpenAiResponsesRequestDefaults(requestDefaults) {
   const raw = requestDefaults && typeof requestDefaults === "object" && !Array.isArray(requestDefaults) ? requestDefaults : {};
@@ -12,18 +17,11 @@ function normalizeOpenAiResponsesRequestDefaults(requestDefaults) {
 
   // 兼容：用户常写 max_tokens/maxTokens；responses API 使用 max_output_tokens。
   // 仅在未显式提供 max_output_tokens 时做映射，避免覆盖用户意图。
-  const maxOutput = pickPositiveIntFromRecord(out, [
-    "max_output_tokens",
-    "maxOutputTokens",
-    "max_tokens",
-    "maxTokens",
-    "max_completion_tokens",
-    "maxCompletionTokens"
-  ]);
+  const maxOutput = pickPositiveIntFromRecord(out, MAX_TOKENS_ALIAS_KEYS);
   if (maxOutput != null && out.max_output_tokens == null) out.max_output_tokens = maxOutput;
 
   // 移除可能导致网关严格校验失败的别名字段（保留标准字段）。
-  deleteKeysFromRecord(out, ["maxOutputTokens", "max_tokens", "maxTokens", "max_completion_tokens", "maxCompletionTokens"]);
+  deleteKeysFromRecord(out, MAX_TOKENS_ALIAS_KEYS_EXCEPT_MAX_OUTPUT_TOKENS);
 
   return out;
 }

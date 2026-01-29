@@ -1,5 +1,4 @@
 "use strict";
-
 const { makeSseJsonIterator } = require("../sse-json");
 const { normalizeString } = require("../../infra/util");
 const { debug } = require("../../infra/log");
@@ -20,7 +19,6 @@ const {
   thinkingNode,
   makeBackChatChunk
 } = require("../../core/augment-protocol");
-
 async function fetchOpenAiResponsesWithFallbacks({
   baseUrl,
   apiKey,
@@ -181,7 +179,7 @@ async function* openAiResponsesStreamTextDeltas({ baseUrl, apiKey, model, instru
   }
 }
 
-async function* openAiResponsesChatStreamChunks({ baseUrl, apiKey, model, instructions, input, tools, timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart }) {
+async function* openAiResponsesChatStreamChunks({ baseUrl, apiKey, model, instructions, input, tools, timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart, nodeIdStart }) {
   const getToolMeta = makeToolMetaGetter(toolMetaByName);
 
   const resp = await fetchOpenAiResponsesWithFallbacks({
@@ -206,7 +204,8 @@ async function* openAiResponsesChatStreamChunks({ baseUrl, apiKey, model, instru
   }
   await assertSseResponse(resp, { label: "OpenAI(responses-chat-stream)", expectedHint: "请确认 baseUrl 指向 OpenAI /responses SSE" });
 
-  let nodeId = 0;
+  let nodeId = Number(nodeIdStart);
+  if (!Number.isFinite(nodeId) || nodeId < 0) nodeId = 0;
   let sawToolUse = false;
   let sawMaxTokens = false;
   let usageInputTokens = null;
@@ -381,7 +380,14 @@ async function* openAiResponsesChatStreamChunks({ baseUrl, apiKey, model, instru
   const hasUsage = usageBuilt.chunk != null;
   if (usageBuilt.chunk) yield usageBuilt.chunk;
 
-  const final = buildFinalChatChunk({ nodeId, stopReasonSeen: sawMaxTokens, stopReason: sawMaxTokens ? STOP_REASON_MAX_TOKENS : null, sawToolUse });
+  const endedCleanly = Boolean(sse.stats.doneSeen) || sawMaxTokens === true || Boolean(finalResponse);
+  const final = buildFinalChatChunk({
+    nodeId,
+    stopReasonSeen: sawMaxTokens,
+    stopReason: sawMaxTokens ? STOP_REASON_MAX_TOKENS : null,
+    sawToolUse,
+    endedCleanly
+  });
   yield final.chunk;
 
   const emittedAny = emittedChunks > 0 || hasUsage || toolCalls.length > 0 || Boolean(thinkingBuf);
@@ -391,5 +397,4 @@ async function* openAiResponsesChatStreamChunks({ baseUrl, apiKey, model, instru
     );
   }
 }
-
 module.exports = { openAiResponsesCompleteText, openAiResponsesStreamTextDeltas, openAiResponsesChatStreamChunks };

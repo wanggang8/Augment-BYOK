@@ -96,7 +96,7 @@ async function* geminiStreamTextDeltas({ baseUrl, apiKey, model, systemInstructi
   }
 }
 
-async function* geminiChatStreamChunks({ baseUrl, apiKey, model, systemInstruction, contents, tools, timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart }) {
+async function* geminiChatStreamChunks({ baseUrl, apiKey, model, systemInstruction, contents, tools, timeoutMs, abortSignal, extraHeaders, requestDefaults, toolMetaByName, supportToolUseStart, nodeIdStart }) {
   const getToolMeta = makeToolMetaGetter(toolMetaByName);
 
   const resp = await fetchGeminiWithFallbacks({
@@ -121,7 +121,8 @@ async function* geminiChatStreamChunks({ baseUrl, apiKey, model, systemInstructi
   }
   await assertSseResponse(resp, { label: "Gemini(chat-stream)", expectedHint: "请确认 baseUrl 指向 Gemini /streamGenerateContent SSE" });
 
-  let nodeId = 0;
+  let nodeId = Number(nodeIdStart);
+  if (!Number.isFinite(nodeId) || nodeId < 0) nodeId = 0;
   let fullText = "";
   let stopReason = null;
   let stopReasonSeen = false;
@@ -204,7 +205,8 @@ async function* geminiChatStreamChunks({ baseUrl, apiKey, model, systemInstructi
   nodeId = usageBuilt.nodeId;
   if (usageBuilt.chunk) yield usageBuilt.chunk;
 
-  const final = buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse });
+  const endedCleanly = Boolean(sse.stats.doneSeen) || stopReasonSeen === true;
+  const final = buildFinalChatChunk({ nodeId, stopReasonSeen, stopReason, sawToolUse, endedCleanly });
   yield final.chunk;
 }
 
