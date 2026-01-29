@@ -48,7 +48,7 @@
   - `id`：provider 标识（model id 形如 `byok:<providerId>:<modelId>`）
   - `type`：
     <!-- BEGIN GENERATED: PROVIDER_TYPES -->
-    `openai_compatible` | `openai_responses` | `anthropic` | `gemini_ai_studio`
+    `openai_compatible` | `openai_responses` | `anthropic` | `anthropic_claude_code` | `gemini_ai_studio`
     <!-- END GENERATED: PROVIDER_TYPES -->
   - `baseUrl`
   - `apiKey`：可空（若 `headers` 已提供鉴权）

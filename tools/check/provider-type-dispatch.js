@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const PROVIDER_TYPES = ["openai_compatible", "openai_responses", "anthropic", "gemini_ai_studio"];
+const PROVIDER_TYPES = ["openai_compatible", "openai_responses", "anthropic", "anthropic_claude_code", "gemini_ai_studio"];
 
 function escapeRe(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

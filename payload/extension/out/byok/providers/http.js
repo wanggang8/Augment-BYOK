@@ -72,4 +72,14 @@ async function safeFetch(url, init, { timeoutMs, abortSignal, label } = {}) {
   }
 }
 
-module.exports = { createAbortError, joinBaseUrl, safeFetch };
+async function readTextLimit(response, maxChars) {
+  const max = Number.isFinite(Number(maxChars)) && Number(maxChars) > 0 ? Math.floor(Number(maxChars)) : 1000;
+  try {
+    const text = await response.text();
+    return text.length > max ? text.slice(0, max) + "…" : text;
+  } catch {
+    return "";
+  }
+}
+
+module.exports = { createAbortError, joinBaseUrl, safeFetch, readTextLimit };

@@ -8,6 +8,7 @@
     "openai_compatible",
     "openai_responses",
     "anthropic",
+    "anthropic_claude_code",
     "gemini_ai_studio"
     /* END GENERATED: KNOWN_PROVIDER_TYPES */
   ];
@@ -17,6 +18,7 @@
     openai_compatible: "https://api.openai.com/v1",
     openai_responses: "https://api.openai.com/v1",
     anthropic: "https://api.anthropic.com/v1",
+    anthropic_claude_code: "https://api.anthropic.com/v1",
     gemini_ai_studio: "https://generativelanguage.googleapis.com/v1beta"
   };
   ns.DEFAULT_BASE_URL_BY_PROVIDER_TYPE = Object.freeze({ ...DEFAULT_BASE_URL_BY_PROVIDER_TYPE });
@@ -108,7 +110,7 @@
       push("warning", "baseUrl", "Base URL 为空：该 Provider 将无法发起请求（建议填写 http(s) 地址）。");
     } else if (!baseCheck.ok) {
       push("error", "baseUrl", `Base URL 无效：${baseCheck.error || "invalid url"}`);
-    } else if (type === "openai_compatible" || type === "openai_responses" || type === "anthropic") {
+    } else if (type === "openai_compatible" || type === "openai_responses" || type === "anthropic" || type === "anthropic_claude_code") {
       // 轻量提示：不少 OpenAI/Anthropic 兼容端点以 /v1 结尾（但不作为硬错误）。
       let pathname = "";
       try {

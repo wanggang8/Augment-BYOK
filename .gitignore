@@ -3,3 +3,11 @@ dist/
 tmp/
 
 config.yaml
+
+# Build artifacts
+build.log
+node_modules/
+
+# Backup and memory files
+.backup/
+.cunzhi-memory/

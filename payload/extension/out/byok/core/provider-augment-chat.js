@@ -18,12 +18,14 @@ const {
 const { openAiCompleteText, openAiChatStreamChunks } = require("../providers/openai");
 const { openAiResponsesCompleteText, openAiResponsesChatStreamChunks } = require("../providers/openai-responses");
 const { anthropicCompleteText, anthropicChatStreamChunks } = require("../providers/anthropic");
+const { anthropicClaudeCodeCompleteText, anthropicClaudeCodeChatStreamChunks } = require("../providers/anthropic-claude-code");
 const { geminiCompleteText, geminiChatStreamChunks } = require("../providers/gemini");
 
 function convertToolDefinitionsByProviderType(type, toolDefs) {
   const t = normalizeString(type);
   if (t === "openai_compatible") return convertOpenAiTools(toolDefs);
   if (t === "anthropic") return convertAnthropicTools(toolDefs);
+  if (t === "anthropic_claude_code") return convertAnthropicTools(toolDefs);
   if (t === "openai_responses") return convertOpenAiResponsesTools(toolDefs);
   if (t === "gemini_ai_studio") return convertGeminiTools(toolDefs);
   throw new Error(`未知 provider.type: ${t}（支持：${formatKnownProviderTypes()}）`);
@@ -46,6 +48,19 @@ async function completeAugmentChatTextByProviderType({
   }
   if (t === "anthropic") {
     return await anthropicCompleteText({
+      baseUrl,
+      apiKey,
+      model,
+      system: buildSystemPrompt(req),
+      messages: buildAnthropicMessages(req),
+      timeoutMs,
+      abortSignal,
+      extraHeaders,
+      requestDefaults
+    });
+  }
+  if (t === "anthropic_claude_code") {
+    return await anthropicClaudeCodeCompleteText({
       baseUrl,
       apiKey,
       model,
@@ -134,6 +149,24 @@ async function* streamAugmentChatChunksByProviderType({
       supportToolUseStart
     });
     yield* traceIfNeeded(tl ? `${tl} anthropic` : "", gen);
+    return;
+  }
+  if (t === "anthropic_claude_code") {
+    const gen = anthropicClaudeCodeChatStreamChunks({
+      baseUrl,
+      apiKey,
+      model,
+      system: buildSystemPrompt(req),
+      messages: buildAnthropicMessages(req),
+      tools,
+      timeoutMs,
+      abortSignal,
+      extraHeaders,
+      requestDefaults,
+      toolMetaByName,
+      supportToolUseStart
+    });
+    yield* traceIfNeeded(tl ? `${tl} anthropic_claude_code` : "", gen);
     return;
   }
   if (t === "openai_responses") {
